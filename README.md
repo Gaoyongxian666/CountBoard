@@ -17,12 +17,12 @@ CountBoard 是一个基于Tkinter简单的,开源的桌面日程倒计时应用�
    * 紧迫模式指24小时以内算做零天。
 
 ## 项目地址
-* <>
+* <https://github.com/Gaoyongxian666/CountBoard>
 
 ## 反馈建议 & 检查更新
 * [反馈途径1](https://docs.qq.com/doc/DR1pMeWhYQmR2V09v)
 * [反馈途径2](https://weibo.com/u/6014982753)
-* [反馈途径3](https://weibo.com/u/6014982753)
+* [反馈途径3](https://github.com/Gaoyongxian666/CountBoard)
 
 ## 推荐配色
 * 主题颜色设置浅色 或者 主题颜色和日程背景颜色一致.
