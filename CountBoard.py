@@ -1,217 +1,220 @@
+import ctypes
 import random
+import threading
 import tkinter as tk
+from ctypes import cdll
+from ctypes.wintypes import HWND, DWORD
 from datetime import datetime
+from queue import Queue
 from threading import Thread
 from tkinter import *
 from tkinter import ttk, colorchooser
 from tkinter.filedialog import askopenfilename
+import pywintypes
 from PIL import Image, ImageTk
 from markdown2 import Markdown
 from sqlitedict import SqliteDict
-from SysTrayIcon import SysTrayIcon
 from TkHtmlView import TkHtmlView
-from TkCalendar import Calendar
-import sys,os
+import sys, os
+from ttkbootstrap.widgets.calendar import DateEntry
+from window_effect import WindowEffect
 
 
-class Main_window(object):
-    """主窗体"""
-    root_x, root_y, abs_x, abs_y = 0, 0, 0, 0
-
-    def __init__(self, title, icon, alpha, topmost, bg, width, height, width_adjust, higth_adjust):
-        self.root = tk.Tk()
+class CountBoard(object):
+    def __init__(self, title, icon, alpha, topmost, bg, width, height, width_adjust, higth_adjust, theme_name,
+                 exe_dir_path,mydb_dict,mysetting_dict):
+        # 传参
         self.title = title
         self.icon = icon
-        self.root.title(title)
-        self.root.wm_attributes('-alpha', alpha)
-        self.root.wm_attributes('-topmost', topmost)
-        self.root.configure(bg=bg)
-
-        self.root.iconbitmap(icon)
+        self.alpha = alpha
+        self.topmost = topmost
         self.width = width
         self.height = height
         self.width_adjust = width_adjust
         self.higth_adjust = higth_adjust
+        self.bg = bg
+        self.exe_dir_path = exe_dir_path
+        self.mydb_dict = mydb_dict
+        self.mysetting_dict = mysetting_dict
 
-        self.exe_dir_path=os.path.dirname(sys.argv[0])
 
-        self.width, self.height = width, height
-        self.root.geometry("%dx%d-%d+%d" % (width, height, width_adjust, higth_adjust))
-
+        # 窗口初始化
+        self.root = tk.Toplevel()
+        self.root.title(title)
+        self.root.configure(bg=bg)
+        self.root.iconbitmap(icon)
+        self.root.wm_attributes('-alpha', alpha)
+        self.root.wm_attributes('-topmost', topmost)
+        self.root.geometry("%dx%d%+d%+d" % (width, height, width_adjust, higth_adjust))
+        print("%dx%d%+d%+d" % (width, height, width_adjust, higth_adjust))
         self.root.maxsize(width, 2000)
-        self.root.minsize(width, 120)
+        self.root.minsize(width, 80)
+        self.root.overrideredirect(1)
+        self.queue = Queue()  # 子线程与主线程的队列作为中继
+        self.root.after(1000, self.relay)
 
-        self.frame_bottom = Frame(self.root, bg=bg)
+        # 布局1
+        self.frame_bottom = Frame(self.root, bg=self.bg, height=15, width=self.width)
         self.frame_bottom.pack(side=BOTTOM)
-        self.frame_top = Frame(self.root)
-        self.frame_top.pack(side=TOP, fill="both", expand=True)
+        self.frame_bottom.pack_propagate(0)
+        # 自定义的sizegrip
+        style = ttk.Style()
+        style.configure('myname.TSizegrip', background=self.bg)
+        self.sizegrip = ttk.Sizegrip(self.frame_bottom, style='myname.TSizegrip')
 
+        # 布局2
+        self.frame_top = Frame(self.root, bg=self.bg)
+        self.frame_top.pack(side=TOP, fill="both", expand=True)
         # 画布
+        self.canvas = Canvas(self.frame_top)
         self.canvas = Canvas(self.frame_top, bg=bg)
         self.canvas.config(highlightthickness=0)
         self.canvas.pack(side=tk.LEFT, fill="both", expand=True)
+        # 事件
+        self.canvas.bind('<ButtonPress-1>', self._on_tap)
+        self.canvas.bind('<ButtonRelease-1>', self._on_re)
+        self.canvas.bind('<B1-Motion>', self._on_move)
+        self.frame_bottom.bind('<ButtonPress-1>', self._on_tap)
+        self.frame_bottom.bind('<ButtonRelease-1>', self._on_re)
+        self.frame_bottom.bind('<B1-Motion>', self._on_move)
 
-        # 切换置顶按钮
-        self.top_photo_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"置顶展示.png").resize((18, 18)))
-        self.cancel_top_photo_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"取消置顶.png").resize((18, 18)))
-        self.top_button = tk.Button(self.frame_bottom,
-                                    command=self.top,
-                                    text="始终置顶",
-                                    bg=bg,
-                                    image=self.top_photo_image,
-                                    relief="flat",
-                                    overrelief="groove")
-        self.top_button.pack(side=tk.LEFT, padx=5, pady=2)
+        # 其他初始化
+        self.root_x, self.root_y, self.abs_x, self.abs_y = 0, 0, 0, 0
 
-        # 切换模式按钮
-        self.mode_photo_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"快递.png").resize((18, 18)))
-        self.normal_mode_photo_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"普通.png").resize((18, 18)))
-        self.mode_button = tk.Button(self.frame_bottom,
-                                     command=self.mode,
-                                     bg=bg,
-                                     text="普通模式",
-                                     image=self.mode_photo_image,
-                                     relief="flat",
-                                     overrelief="groove")
-        self.mode_button.pack(side=tk.LEFT, padx=5, pady=2)
-
-        # 新建按钮
-        self.create_task_image = Image.open(self.exe_dir_path+"/img/"+"新建.png").resize((18, 18))
-        self.create_task__photo_image = ImageTk.PhotoImage(self.create_task_image)
-        self.create_task__button = tk.Button(self.frame_bottom, command=self.create_task,
-                                             bg=bg,
-                                             text="普通模式", image=self.create_task__photo_image,
-                                             relief="flat",
-                                             overrelief="groove")
-
-        self.create_task__button.pack(side=tk.LEFT, padx=5, pady=2)
-
-        # 设置按钮
-        self.setting_photo_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"settings.png").resize((19, 19)))
-        self.setting_button = tk.Button(self.frame_bottom,
-                                        command=self.setting,
-                                        bg=bg,
-                                        image=self.setting_photo_image,
-                                        relief="flat",
-                                        overrelief="groove")
-        self.setting_button.pack(side=tk.LEFT, padx=5, pady=2)
-
-        # 透明度按钮
-        self.alpha_photo_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"透明度.png").resize((18, 18)))
-        self.alpha_button = tk.Button(self.frame_bottom,
-                                      command=self.alpha,
-                                      bg=bg,
-                                      image=self.alpha_photo_image,
-                                      relief="flat",
-                                      overrelief="groove")
-        self.alpha_button.pack(side=tk.LEFT, padx=5, pady=2)
-
-        # 删除按钮
-        self.del_all_photo_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"删除全部.png").resize((18, 18)))
-        self.del_all_button = tk.Button(self.frame_bottom,
-                                        command=self.del_all,
-                                        bg=bg,
-                                        image=self.del_all_photo_image,
-                                        relief="flat",
-                                        overrelief="groove")
-        self.del_all_button.pack(side=tk.LEFT, padx=5, pady=2)
-
-        # 帮助按钮
-        self.help_photo_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"帮助中心.png").resize((18, 18)))
-        self.help_button = tk.Button(self.frame_bottom,
-                                     command=self.help,
-                                     bg=bg,
-                                     image=self.help_photo_image,
-                                     relief="flat",
-                                     overrelief="groove")
-        self.help_button.pack(side=tk.LEFT, padx=5, pady=2)
-
-        # 退出按钮
-        self.exit_photo_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"退出.png").resize((18, 18)))
-        self.exit_button = tk.Button(self.frame_bottom,
-                                     command=self.exit,
-                                     bg=bg,
-                                     image=self.exit_photo_image,
-                                     relief="flat",
-                                     overrelief="groove")
-        self.exit_button.pack(side=tk.LEFT, padx=5, pady=2)
+        # 获取句柄的两种方式
+        self.hwnd = pywintypes.HANDLE(int(self.root.frame(), 16))
+        # self.hwnd = win32gui.FindWindow(None, title)
+        self.window_effect = WindowEffect()
+        self.tile_theme_name = self.mysetting_dict['tile_theme_name'][0]
+        self.tile_sizegrip = self.mysetting_dict['tile_sizegrip'][0]
+        self.task_radius = self.mysetting_dict['task_radius'][0]
+        self.set_sizegrip(self.tile_sizegrip)
+        self.set_theme(tile_theme_name=self.tile_theme_name)
 
         # 任务列表
         self.tasks = Tasks(pre_window=self)
         self.tasks.show_all()
 
-        # 最小化
-        self.SysTrayIcon = None
-        self.root.bind("<Unmap>",
-                       lambda event: self.Hidden_window() if self.root.state() == 'iconic' else False)
-        self.root.protocol('WM_DELETE_WINDOW', self.exit)
+        # self.root.mainloop()
 
-        self.root.mainloop()
+    def relay(self):
+        """
+        更新主线程UI
+        """
+        while not self.queue.empty():
+            content = self.queue.get()
+            print(content)
+            if content == "show_sizegrip":
+                self.update_sizegrip(1)
+            elif content == "close_sizegrip":
+                self.update_sizegrip(0)
+            elif content == "update_theme_Acrylic":
+                self.update_theme("Acrylic")
+            elif content == "update_theme_Aero":
+                self.update_theme("Aero")
+            elif content == "set_task_right_angle":
+                self.update_task_radius(0)
+            elif content == "set_task_round_angle":
+                self.update_task_radius(25)
+            elif content == "set_window_top":
+                self.set_top(1)
+            elif content == "cancel_window_top":
+                self.set_top(0)
+            elif content == "refresh_tasks":
+                self.tasks.refresh_tasks()
 
-    def set_theme(self, bg):
+        self.root.after(100, self.relay)
+
+    def update_theme(self, tile_theme_name):
+        """
+        外部调用，更新主题
+        """
+        self.tile_theme_name=tile_theme_name
+        self.window_effect.removeBackgroundEffect(self.hwnd)
+        if tile_theme_name == "Acrylic":
+            self.window_effect.setAcrylicEffect(self.hwnd)
+        else:
+            self.window_effect.setAeroEffect(self.hwnd)
+
+    def update_task_radius(self, task_radius):
+        """
+        外部调用，设置是否圆角
+        """
+        self.tasks.refresh_(task_radius)
+
+    def update_sizegrip(self, flag):
+        """
+        外部调用，是否显示大小握把
+        """
+        if flag == 1:
+            self.sizegrip.pack(side=RIGHT, anchor="ne")
+            self.sizegrip.bind('<ButtonPress-1>', self._on_tap)
+            self.sizegrip.bind('<ButtonRelease-1>', self._on_re)
+            self.sizegrip.bind('<B1-Motion>', self.resize)
+        else:
+            self.sizegrip.pack_forget()
+            self.sizegrip.unbind_all('<ButtonPress-1>')
+            self.sizegrip.unbind_all('<ButtonRelease-1>')
+            self.sizegrip.unbind_all('<B1-Motion>')
+
+    def set_sizegrip(self, flag):
+        """
+        直接设置，是否显示大小握把
+        """
+        if flag == 1:
+            self.sizegrip.pack(side=RIGHT, anchor="ne")
+            self.sizegrip.bind('<ButtonPress-1>', self._on_tap)
+            self.sizegrip.bind('<ButtonRelease-1>', self._on_re)
+            self.sizegrip.bind('<B1-Motion>', self.resize)
+        else:
+            self.sizegrip.pack_forget()
+            self.sizegrip.unbind_all('<ButtonPress-1>')
+            self.sizegrip.unbind_all('<ButtonRelease-1>')
+            self.sizegrip.unbind_all('<B1-Motion>')
+
+    def resize(self, event):
+        """
+        握把的回调函数，用来控制大小
+        """
+        deltax = event.x_root - self.root.winfo_rootx()
+        deltay = event.y_root - self.root.winfo_rooty()
+        if deltax < 1:
+            deltax = 1
+        if deltay < 1:
+            deltay = 1
+        self.root.geometry("%sx%s" % (deltax, deltay))
+
+    def set_theme(self, tile_theme_name):
+        """
+        直接设置，设置主题
+        """
+        if tile_theme_name == "Acrylic":
+            self.window_effect.setAcrylicEffect(self.hwnd)
+        else:
+            self.window_effect.setAeroEffect(self.hwnd)
+
+    def set_background(self, bg):
+        """
+        设置Acrylic模式下，进行移动时的窗口背景
+        """
         self.root.configure(bg=bg)
         self.frame_top.configure(bg=bg)
-        self.frame_bottom.configure(bg=bg)
         self.canvas.configure(bg=bg)
+        self.frame_bottom.configure(bg=bg)
 
-        self.top_button.configure(bg=bg)
-        self.alpha_button.configure(bg=bg)
-        self.mode_button.configure(bg=bg)
-        self.setting_button.configure(bg=bg)
-        self.help_button.configure(bg=bg)
-        self.exit_button.configure(bg=bg)
-        self.del_all_button.configure(bg=bg)
-        self.create_task__button.configure(bg=bg)
-
-        self.tasks.refresh_tasks()
-
-    def alpha(self):
-        Alpha_window(
-            height=40,
-            pre_window=self)
-
-    def del_all(self):
-        Ask_del_window(
-            height=80,
-            pre_window=self)
-
-    def help(self,**kwargs):
-        Help_window(width=1000,
-                    height=600,
-                    path=self.exe_dir_path+"/README.md")
-
-    def setting(self):
-        Setting_window(
-            height=110,
-            pre_window=self)
-
-    def create_task(self):
-        Newtask_window(
-            height=180,
-            pre_window=self)
-
-    def top(self):
-        if self.top_button.cget("text") == "始终置顶":
+    def set_top(self, flag):
+        """
+        外部调用，设置是否置顶
+        """
+        if flag == 1:
             self.root.wm_attributes('-topmost', 1)
-            self.top_button.config(text="取消置顶", image=self.cancel_top_photo_image)
         else:
             self.root.wm_attributes('-topmost', 0)
-            self.top_button.config(text="始终置顶", image=self.top_photo_image)
 
-    def mode(self):
-        if self.mode_button.cget("text") == "普通模式":
-            self.root.overrideredirect(1)
-            self.mode_button.config(text="简洁模式", image=self.normal_mode_photo_image)
-
-            # 自动置顶
-            self.root.wm_attributes('-topmost', 1)
-            self.top_button.config(text="取消置顶", image=self.cancel_top_photo_image)
-
-            self.root.bind('<B1-Motion>', self._on_move)
-            self.root.bind('<ButtonPress-1>', self._on_tap)
-        else:
-            self.root.overrideredirect(0)
-            self.mode_button.config(text="普通模式", image=self.mode_photo_image)
+    def _on_re(self, event):
+        if self.tile_theme_name == "Acrylic":
+            self.window_effect.setAcrylicEffect(self.hwnd)
+            self.set_background(bg="black")
 
     def _on_move(self, event):
         offset_x = event.x_root - self.root_x
@@ -224,72 +227,56 @@ class Main_window(object):
         self.root.geometry(geo_str)
 
     def _on_tap(self, event):
+        if self.tile_theme_name == "Acrylic":
+            self.set_background(bg="grey")
+            self.window_effect.removeBackgroundEffect(self.hwnd)
+
         self.width = self.root.winfo_width()
         self.height = self.root.winfo_height()
         self.root_x, self.root_y = event.x_root, event.y_root
         self.abs_x, self.abs_y = self.root.winfo_x(), self.root.winfo_y()
 
-    def show_msg(s, title='标题', msg='内容', time=500):
-        s.SysTrayIcon.refresh(title=title, msg=msg, time=time)
-
-    def Hidden_window(s, icon='favicon.ico', hover_text="CountBoard"):
-        icon = s.icon
-        hover_text = s.title
-        menu_options = ()
-
-        s.root.withdraw()  # 隐藏tk窗口
-        if not s.SysTrayIcon: s.SysTrayIcon = SysTrayIcon(
-            icon,  # 图标
-            hover_text,  # 光标停留显示文字
-            menu_options,  # 右键菜单
-            on_quit=s.exit,  # 退出调用
-            tk_window=s.root,  # Tk窗口
-        )
-        s.SysTrayIcon.activation()
-
-    def exit(s, _sysTrayIcon=None):
-        s.root.destroy()
-
 
 class Tasks:
     def __init__(self, pre_window, **kwargs, ):
-        # 接收数据
+        # 传递的参数
         self.pre_window = pre_window
         self.root = pre_window.root
         self.width = pre_window.width
-
-        # key=main_text,value[0]=main_text,value[1]=time_text,value[2]=countdown_time,value[3]=color,value[4]=tag_name.
-        self.mydict = SqliteDict(exe_dir_path+'/my_db.sqlite', autocommit=True)
+        self.exe_dir_path = pre_window.exe_dir_path
         self.canvas = pre_window.canvas
+        self.mydb_dict = pre_window.mydb_dict
+        self.mysetting_dict = pre_window.mysetting_dict
+        self.task_radius = pre_window.task_radius
 
-        self.task_init_x = 15
-        self.task_init_y = 15
-
-        self.task_width = 300
+        # x左右边距，y上下边距
+        self.task_init_x = 12
+        self.task_init_y = 12
+        # 高度，宽度，是否圆角
+        self.task_width = 276
         self.task_height = 60
-        self.task_radius = 20
 
-        self.__int_update_time()
+        self.__init_update_time()
 
-    def __int_update_time(self):
+    def __init_update_time(self):
         # 初始化更新时间
         from datetime import datetime
-        for key, value in self.mydict.iteritems():
+        for key, value in self.mydb_dict.iteritems():
             startdate = datetime.today()
             enddate = datetime.strptime(value[1], '%Y-%m-%d')
             days = str((enddate - startdate).days)
-            self.mydict[key] = [value[0], value[1], days, value[3], value[4],value[5]]
+            self.mydb_dict[key] = [value[0], value[1], days, value[3], value[4], value[5]]
 
     def del_all(self):
         # 删除所有数据
         self.canvas.delete("all")
-        for key in self.mydict.iterkeys():
-            self.mydict.__delitem__(key)
+        for key in self.mydb_dict.iterkeys():
+            self.mydb_dict.__delitem__(key)
 
     def show_all(self):
         # 展示当前数据库的所以元素
         self.canvas.delete("all")
-        for value in sorted(self.mydict.itervalues(), key=self.get_int_day):
+        for value in sorted(self.mydb_dict.itervalues(), key=self.get_int_day):
             self.add_task(value)
 
     def get_int_day(self, value):
@@ -317,20 +304,19 @@ class Tasks:
                   x1, y1 + radius,
                   x1, y1 + radius,
                   x1, y1]
-        self.canvas.create_polygon(points, **kwargs, smooth=True, outline="white")
+        self.canvas.create_polygon(points, **kwargs, smooth=True, width=1, outline="#080808")
 
     def add_task(self, value):
         self.task_main_text = value[0]
         self.task_time_text = value[1]
-        mode = SqliteDict(exe_dir_path+'/setting.sqlite').__getitem__("mode")[0]
-        if mode=="普通模式":
-            self.task_countdown_text = str(int(value[2])+1)
+        mode = self.mysetting_dict["mode"][0]
+        if mode == "普通模式":
+            self.task_countdown_text = str(int(value[2]) + 1)
         else:
             self.task_countdown_text = value[2]
         self.task_color = value[3]
         self.task_tag_name = value[4]
         self.task_text_color = value[5]
-
 
         self.round_rectangle(self.task_init_x, self.task_init_y, self.task_init_x + self.task_width,
                              self.task_init_y + self.task_height, radius=self.task_radius,
@@ -352,17 +338,15 @@ class Tasks:
                                 width=220,
                                 font=('Times', 8, 'italic'),
                                 fill=self.task_text_color,
-
                                 anchor=W,
                                 justify=LEFT,
                                 tag=(self.task_tag_name))
-        self.canvas.create_text(self.task_init_x + 280,
+        self.canvas.create_text(self.task_init_x + 250,
                                 self.task_init_y + 30,
                                 text=self.task_countdown_text + "天",
                                 width=220,
-                                font=('microsoft yahei', 25, 'bold'),
+                                font=('microsoft yahei', 20, 'bold'),
                                 fill=self.task_text_color,
-
                                 anchor=E,  # 以右侧为毛点
                                 justify=RIGHT,
                                 tag=(self.task_tag_name))
@@ -378,13 +362,13 @@ class Tasks:
 
     def add_one(self, value):
         # 更新数据库
-        self.mydict[value[0]] = value
+        self.mydb_dict[value[0]] = value
 
     def handler_adaptor(self, fun, **kwds):
         return lambda event, fun=fun, kwds=kwds: fun(event, **kwds)
 
     def task_DoubleClick(self, event, task_tag_name):
-        for value in self.mydict.itervalues():
+        for value in self.mydb_dict.itervalues():
             if value[4] == task_tag_name:
                 Newtask_window(
                     height=180,
@@ -394,7 +378,7 @@ class Tasks:
         print("no!" + task_tag_name)
 
     def del_one(self, value):
-        self.mydict.__delitem__(value)
+        self.mydb_dict.__delitem__(value)
 
     def refresh_tasks(self):
         # 画布删除,重新画
@@ -402,144 +386,94 @@ class Tasks:
         self.task_init_y = 15
         self.show_all()
 
+    def refresh_(self, task_radius):
+        # 画布删除,重新画
+        self.task_radius = task_radius
+        self.canvas.delete("all")
+        self.task_init_y = 15
+        self.show_all()
+
 
 class Newtask_window(object):
     def __init__(self, height, pre_window, **kwargs):
+        # 传递参数
+        self.pre_window = pre_window
+        self.width, self.height = pre_window.width, height
+        self.tasks = pre_window.tasks
+        self.pre_window_root = pre_window.root
+        self.exe_dir_path = pre_window.exe_dir_path
+
+        # 窗口初始化
         self.root = tk.Toplevel()
         self.root.title('新建日程')
         self.root.iconbitmap("favicon.ico")
-        self.tasks = pre_window.tasks
-        self.pre_window = pre_window
-        self.pre_window_root = pre_window.root
-        self.width, self.height = pre_window.width, height
-        self.exe_dir_path=pre_window.exe_dir_path
+        self.root.wm_attributes('-topmost', 1)
+        # 居中显示
+        win_width = self.root.winfo_screenwidth()
+        win_higth = self.root.winfo_screenheight()
+        width_adjust = (win_width - self.width) / 2
+        higth_adjust = (win_higth - self.height) / 2
+        self.root.geometry("%dx%d-%d-%d" % (self.width, self.height, width_adjust, higth_adjust))
 
-        self.pre_window_root_x, self.pre_window_root_y, self.pre_window_root_w, self.pre_window_root_h = \
-            self.pre_window_root.winfo_x(), \
-            self.pre_window_root.winfo_y(), \
-            self.pre_window_root.winfo_width(), \
-            self.pre_window_root.winfo_height()
-        self.width_adjust = self.pre_window_root_x
-        self.height_adjust = self.pre_window_root_y + self.pre_window_root_h + 40
+        # 窗口布局
+        self.main_frame = ttk.Frame(self.root, padding=20)
+        self.main_frame.pack(fill=tk.X)
 
-        self.root.geometry("%dx%d+%d+%d" % (self.width, self.height, self.width_adjust, self.height_adjust))
+        # 第一行框架
+        entry_spin_frame = ttk.Frame(self.main_frame)
+        entry_spin_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(
+            master=entry_spin_frame,
+            text='日程名称  '
+        ).pack(side=tk.LEFT, fill=tk.X)
+        self.task_name_entry = ttk.Entry(entry_spin_frame,validate="focus", validatecommand=self.clear)
+        self.task_name_entry.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES)
 
-        # 布局
-        self.frame_top = Frame(self.root)
-        self.frame_top.pack(side=TOP, padx=20, pady=10)
-        self.frame_middle = Frame(self.root)
-        self.frame_middle.pack(side=TOP, padx=20, pady=1)
-        self.frame_middle2 = Frame(self.root)
-        self.frame_middle2.pack(side=TOP, padx=20, pady=10)
-        self.frame_bottom2 = Frame(self.root)
-        self.frame_bottom2.pack(side=BOTTOM, padx=20, expand=True, fill=X)
-        self.frame_bottom = Frame(self.root)
-        self.frame_bottom.pack(side=BOTTOM, padx=20)
+        # 第二行框架
+        timer_frame = ttk.Frame(self.main_frame)
+        timer_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(
+            master=timer_frame,
+            text='选择时间  '
+        ).pack(side=tk.LEFT, fill=tk.X)
+        self.date_entry = DateEntry(timer_frame)
+        self.date_entry.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES, padx=3)
 
-        # 日程名称
-        ttk.Label(self.frame_top, text="日程名称").pack(side=tk.LEFT, padx=5, pady=2)
-        self.task_name_str = tk.StringVar()
-        self.task_name = ttk.Entry(self.frame_top,
-                                   validate="focus",  # 获取焦点调用test函数
-                                   validatecommand=self.clear,
-                                   textvariable=self.task_name_str)
-        self.task_name.pack(side=tk.LEFT, fill="x", expand=True)
-        tk.Label(self.frame_top, state="disable", width=1000).pack(side=tk.LEFT, expand=True, fill=X)
+        # 第三行框架
+        ok_frame = ttk.Frame(self.main_frame)
+        ok_frame.pack(fill=tk.X, pady=5)
+        ttk.Button(
+            master=ok_frame,
+            text='确认',
+            bootstyle='outline',
+            command=self.ok,
+        ).pack(side=tk.RIGHT, fill=tk.X, expand=tk.YES, padx=3)
 
-        # 选择时间
-        ttk.Label(self.frame_middle, text="选择时间").pack(side=tk.LEFT, padx=5, pady=2)
-        self.date_str = tk.StringVar()
-        self.date = tk.Entry(self.frame_middle, textvariable=self.date_str, width=10)
-        self.date.pack(side=tk.LEFT)
-        date_str_gain = lambda: [self.date_str.set(date) for date in
-                                 [Calendar((self.width_adjust, self.height_adjust), 'ul').selection()] if date]
-        self.data_photo_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"234日历.png").resize((15, 15)))
-        self.data_button = tk.Button(self.frame_middle, command=date_str_gain,
-                                     text="日期",
-                                     image=self.data_photo_image,
-                                     relief="flat",
-                                     overrelief="groove").pack(side=tk.LEFT)
-        tk.Label(self.frame_middle, state="disable", width=1000).pack(side=tk.LEFT, expand=True, fill=X)
-
-        # 背景颜色
-        ttk.Label(self.frame_middle2, text="背景颜色").pack(side=tk.LEFT, padx=5, pady=2)
-        self.color_str = tk.StringVar()
-        self.color_frame = tk.Entry(self.frame_middle2, width=10, textvariable=self.color_str)
-        self.color_frame.pack(side=tk.LEFT)
-        self.color_photo_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"颜色.png").resize((15, 15)))
-        self.color_button = tk.Button(self.frame_middle2,
-                                      command=self.onChoose,
-                                      text="日期",
-                                      image=self.color_photo_image,
-                                      relief="flat",
-                                      overrelief="groove")
-        self.color_button.pack(side=tk.LEFT)
-        tk.Label(self.frame_middle2, state="disable", width=1000).pack(side=tk.LEFT, expand=True, fill=X)
-
-        # 字体颜色
-        ttk.Label(self.frame_bottom, text="字体颜色").pack(side=tk.LEFT, padx=5, pady=2)
-        self.text_color_str = tk.StringVar()
-        self.text_color_frame = tk.Entry(self.frame_bottom, width=10, textvariable=self.text_color_str)
-        self.text_color_frame.pack(side=tk.LEFT)
-        self.text_color_photo_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"字体颜色.png").resize((15, 15)))
-        self.text_color_button = tk.Button(self.frame_bottom,
-                                           command=self.text_onChoose,
-                                           text="日期",
-                                           image=self.text_color_photo_image,
-                                           relief="flat", overrelief="groove")
-        self.text_color_button.pack(side=tk.LEFT)
-        tk.Label(self.frame_bottom, state="disable", width=1000).pack(side=tk.LEFT, expand=True, fill=X)
-
-        # 完成按钮
-        self.save_task_photo_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"对勾.png").resize((15, 15)))
-        self.save_task_button = tk.Button(self.frame_bottom2, command=self.ok,
-                                          text="完成",
-                                          image=self.save_task_photo_image,
-                                          relief="flat", overrelief="groove")
-        self.save_task_button.pack(side=tk.RIGHT)
-
-        # 配置默认数据,初始化
+        # 其他初始化
         self.modify_flag = 0
-        self.task_name.insert(0, "创建你的日程吧！")
-        self.date.insert(0, datetime.today().date())
+        self.task_name_entry.insert(0, "创建你的日程吧！")
 
-        self.color_frame.insert(0, "#c0c0c0")
-        self.color_frame.config(background="#c0c0c0")
-
-        self.text_color_frame.insert(0, "#ffffff")
-        self.text_color_frame.config(background="#ffffff")
-        '''***********************************下面区别于new_task**************************************************'''
+        # '''***********************************下面区别于new_task**************************************************'''
         for key in kwargs:
             if key == "value":
+                # 其他初始化
                 self.modify_flag = 1
                 self.root.title('修改日程')
-
                 self.value = kwargs["value"]
 
-
                 # 配置参数,初始化
-                self.task_name.delete(0, "end")
-                self.task_name.insert(0, self.value[0])
+                self.task_name_entry.delete(0, "end")
+                self.task_name_entry.insert(0, self.value[0])
 
-                self.date.delete(0, "end")
-                self.date.insert(0, self.value[1])
+                self.date_entry.entry.delete(0, "end")
+                self.date_entry.entry.insert(0, self.value[1])
 
-                self.color_frame.delete(0, "end")
-                self.color_frame.insert(0, self.value[3])
-                self.color_frame.config(background=self.value[3])
-
-                self.text_color_frame.delete(0, "end")
-                self.text_color_frame.insert(0, self.value[5])
-                self.text_color_frame.config(background=self.value[5])
-
-                # 删除按钮
-                self.del_task_photo_image=ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"删除色块.png").resize((15, 15)))
-                self.del_task_button = tk.Button(self.frame_bottom2, command=self.del_task,
-                                                 text="完成",
-                                                 image=self.del_task_photo_image,
-                                                 relief="flat", overrelief="groove")
-                self.del_task_button.pack(side=tk.RIGHT)
-
+                self.del_task_button=ttk.Button(
+                    master=ok_frame,
+                    text='删除',
+                    style='danger.Outline.TButton',
+                    command=self.del_task,
+                ).pack(side=tk.LEFT, padx=3)
         self.root.mainloop()
 
     def del_task(self):
@@ -549,8 +483,8 @@ class Newtask_window(object):
 
     def clear(self):
         # 点击输入框的回调,删除提示内容
-        if "创建你的日程" in self.task_name.get():
-            self.task_name.delete(0, "end")
+        if "创建你的日程" in self.task_name_entry.get():
+            self.task_name_entry.delete(0, "end")
 
     def ok(self):
         if self.modify_flag == 1:
@@ -559,117 +493,65 @@ class Newtask_window(object):
 
         # 点击确认按钮,更新数据库
         startdate = datetime.today()
-        enddate = datetime.strptime(self.date_str.get(), '%Y-%m-%d')
+        enddate = datetime.strptime(self.date_entry.entry.get(), '%Y-%m-%d')
         days = str((enddate - startdate).days)
-        value = [self.task_name_str.get(),
-                 self.date_str.get(),
+        value = [self.task_name_entry.get(),
+                 self.date_entry.entry.get(),
                  days,
-                 self.color_str.get(),
+                 "#080808",
                  ''.join(random.sample('zyxwvutsrqponmlkjihgfedcba1234567890', 5)),
-                 self.text_color_str.get()]
+                 "white"]
+        print(value)
         self.tasks.add_one(value)
         self.tasks.refresh_tasks()
         self.root.destroy()
 
-    def text_onChoose(self):
-        (rgb, hx) = colorchooser.askcolor()
-        self.text_color_frame.config(background=hx)
-        self.text_color_frame.delete(0, 'end')
-        self.text_color_frame.insert(0, hx)
-
-    def onChoose(self):
-        (rgb, hx) = colorchooser.askcolor()
-        self.color_frame.config(background=hx)
-        self.color_frame.delete(0, 'end')
-        self.color_frame.insert(0, hx)
-
-
-class Alpha_window(object):
-    def __init__(self, height, pre_window, **kwargs):
-        self.root = tk.Toplevel()
-        self.root.title('调整透明度')
-        self.root.iconbitmap("favicon.ico")
-
-        self.pre_window = pre_window
-        self.pre_window_root = pre_window.root
-        self.width = pre_window.width
-        self.tasks = pre_window.tasks
-        self.height = height
-
-        self.pre_window_root_x, self.pre_window_root_y, self.pre_window_root_w, self.pre_window_root_h = \
-            self.pre_window_root.winfo_x(), \
-            self.pre_window_root.winfo_y(), \
-            self.pre_window_root.winfo_width(), \
-            self.pre_window_root.winfo_height()
-        self.width_adjust = self.pre_window_root_x
-        self.height_adjust = self.pre_window_root_y + self.pre_window_root_h + 40
-
-        self.root.geometry("%dx%d+%d+%d" % (self.width, self.height, self.width_adjust, self.height_adjust))
-
-        # 布局
-        self.frame_bottom = Frame(self.root)
-        self.frame_bottom.pack(side=BOTTOM, fill="x", expand=True, padx=10, pady=5)
-        # ttk.Style().configure("TScale",
-        #                       # background="#ccc",
-        #                       sliderwidth=0.1)
-        self.scale = ttk.Scale(self.frame_bottom, from_=30, to=100,
-                               # style="TScale",
-                               command=self.set_alpha,
-                               value=90)
-        self.scale.pack(side=tk.LEFT, padx=5, pady=2, expand=True, fill=X)
-        self.scale.set(float(self.pre_window_root.wm_attributes("-alpha"))*100)
-        self.root.mainloop()
-
-    def set_alpha(self, i):
-        self.pre_window_root.attributes('-alpha', float(i)/100)
-
 
 class Ask_del_window(object):
     def __init__(self, height, pre_window, **kwargs):
-        self.root = tk.Toplevel()
-        self.root.title('删除全部')
-        self.root.iconbitmap("favicon.ico")
+        # 传递参数
         self.pre_window = pre_window
         self.pre_window_root = pre_window.root
         self.width = pre_window.width
         self.tasks = pre_window.tasks
         self.height = height
-        self.exe_dir_path =pre_window.exe_dir_path
+        self.exe_dir_path = pre_window.exe_dir_path
 
-        self.pre_window_root_x, self.pre_window_root_y, self.pre_window_root_w, self.pre_window_root_h = \
-            self.pre_window_root.winfo_x(), \
-            self.pre_window_root.winfo_y(), \
-            self.pre_window_root.winfo_width(), \
-            self.pre_window_root.winfo_height()
-        self.width_adjust = self.pre_window_root_x
-        self.height_adjust = self.pre_window_root_y + self.pre_window_root_h + 40
+        # 窗口初始化
+        self.root = tk.Toplevel()
+        self.root.title('删除全部')
+        self.root.iconbitmap("favicon.ico")
+        self.root.wm_attributes('-topmost', 1)
 
-        self.root.geometry("%dx%d+%d+%d" % (self.width, self.height, self.width_adjust, self.height_adjust))
+        # 居中显示
+        win_width = self.root.winfo_screenwidth()
+        win_higth = self.root.winfo_screenheight()
+        width_adjust = (win_width - self.width) / 2
+        higth_adjust = (win_higth - self.height) / 2
+        self.root.geometry("%dx%d-%d-%d" % (self.width, self.height, width_adjust, higth_adjust))
 
         # 布局
         self.frame_top = Frame(self.root)
         self.frame_top.pack(side=TOP, padx=20, pady=5, expand=True, fill=X)
         self.frame_bottom = Frame(self.root)
         self.frame_bottom.pack(side=BOTTOM, padx=20, expand=True, fill=X)
-        self.lable = ttk.Label(self.frame_top, text="是否要删除全部?"
-                               )
+
+        self.lable = ttk.Label(self.frame_top, text="是否要删除全部?")
         self.lable.pack(side=tk.LEFT, padx=5, pady=2, expand=True, fill=X)
 
-        self.cancel_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"取消.png").resize((18, 18)))
-        self.cancel_button = tk.Button(self.frame_bottom,
-                                       command=self.cancel,
-                                       image=self.cancel_image,
-                                       relief="flat",
-                                       overrelief="groove")
-        self.cancel_button.pack(side=tk.RIGHT, padx=5, pady=2)
+        self.cancel_button = ttk.Button(
+            master=self.frame_bottom,
+            text='取消',
+            bootstyle='outline',
+            command=self.cancel, )
+        self.cancel_button.pack(side=tk.RIGHT, fill=tk.X, expand=tk.YES, padx=3)
 
-        self.ok_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"确认.png").resize((18, 18)))
-        self.ok_button = tk.Button(self.frame_bottom,
-                                   command=self.ok,
-                                   image=self.ok_image,
-                                   relief="flat",
-                                   overrelief="groove")
-        self.ok_button.pack(side=tk.RIGHT, padx=5, pady=2)
+        self.ok_button = ttk.Button(
+            master=self.frame_bottom,
+            text='确认',
+            bootstyle='outline',
+            command=self.ok, )
+        self.ok_button.pack(side=tk.RIGHT, fill=tk.X, expand=tk.YES, padx=3)
 
         self.root.mainloop()
 
@@ -695,7 +577,7 @@ class Setting_window(object):
         self.height = height
 
         # setting 数据库
-        self.mydict = SqliteDict(self.exe_dir_path+'/setting.sqlite', autocommit=True)
+        self.mydict = SqliteDict(self.exe_dir_path + '/setting.sqlite', autocommit=True)
         self.theme_color_str = tk.StringVar()
         self.mode_combobox_str = tk.StringVar()
         self.theme_color_str.set(self.mydict["theme"][0])
@@ -726,7 +608,8 @@ class Setting_window(object):
         self.theme_lable.pack(side=tk.LEFT, padx=5, pady=2)
         self.theme_color_frame = tk.Entry(self.frame_top, width=10, textvariable=self.theme_color_str)  # 10个字符的宽度
         self.theme_color_frame.pack(side=tk.LEFT)
-        self.theme_color_photo_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"颜色.png").resize((15, 15)))
+        self.theme_color_photo_image = ImageTk.PhotoImage(
+            Image.open(self.exe_dir_path + "/img/" + "颜色.png").resize((15, 15)))
         self.theme_color_button = tk.Button(self.frame_top,
                                             command=self.theme_onChoose,
                                             text="背景颜色",
@@ -747,7 +630,7 @@ class Setting_window(object):
         tk.Label(self.frame_middle, state="disable", width=1000).pack(side=tk.LEFT, expand=True, fill=X)
 
         # 取消按钮
-        self.cancel_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"取消.png").resize((18, 18)))
+        self.cancel_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path + "/img/" + "取消.png").resize((18, 18)))
         self.cancel_button = tk.Button(self.frame_bottom,
                                        command=self.cancel,
                                        image=self.cancel_image,
@@ -756,7 +639,7 @@ class Setting_window(object):
         self.cancel_button.pack(side=tk.RIGHT, padx=5, pady=2)
 
         # 确定按钮
-        self.ok_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path+"/img/"+"确认.png").resize((18, 18)))
+        self.ok_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path + "/img/" + "确认.png").resize((18, 18)))
         self.ok_button = tk.Button(self.frame_bottom,
                                    command=self.ok,
                                    image=self.ok_image,
@@ -788,18 +671,24 @@ class Setting_window(object):
 
 class Help_window(object):
     def __init__(self, width, height, path):
+        # 传递参数
+        self.path = path
+        self.width, self.height = width, height
+
+        # 窗口初始化
         self.root = tk.Toplevel()
         self.root.title('使用说明')
         self.root.iconbitmap("favicon.ico")
-        self.path = path
+        self.root.wm_attributes('-topmost', 1)
+
         # 居中显示
-        self.width, self.height = width, height
         win_width = self.root.winfo_screenwidth()
         win_higth = self.root.winfo_screenheight()
-        width_adjust = (win_width - width) / 2
-        higth_adjust = (win_higth - height) / 2
-        self.root.geometry("%dx%d+%d+%d" % (width, height, width_adjust, higth_adjust))
+        width_adjust = (win_width - self.width) / 2
+        higth_adjust = (win_higth - self.height) / 2
+        self.root.geometry("%dx%d+%d+%d" % (self.width, self.height, width_adjust, higth_adjust))
 
+        # 窗口布局
         self.frame_bottom = ttk.Frame(self.root)
         self.frame_bottom.pack(side=tk.BOTTOM, fill=BOTH, expand=False)
         self.frame_top = ttk.Frame(self.root, padding=20)
@@ -839,27 +728,27 @@ class Help_window(object):
 
 
 if __name__ == "__main__":
-    exe_dir_path=os.path.dirname(sys.argv[0])
+    exe_dir_path = os.path.dirname(sys.argv[0])
     print(exe_dir_path)
-    if not os.path.exists(exe_dir_path+"/setting.sqlite"):
+    if not os.path.exists(exe_dir_path + "/setting.sqlite"):
         print("第一次运行")
-        mydict = SqliteDict(exe_dir_path+'/setting.sqlite')
+        mydict = SqliteDict(exe_dir_path + '/setting.sqlite')
         mydict["theme"] = ["white"]
         mydict["mode"] = ["普通模式"]
         mydict.commit()
         mydict.close()
 
-    bg = SqliteDict(exe_dir_path+'/setting.sqlite').__getitem__("theme")[0]
-    main = Main_window(title="CountBoard",
-                       icon="favicon.ico",
-                       alpha=0.9, topmost=0,
-                       bg=bg,
-                       width=330,
-                       height=190,
-                       width_adjust=10,
-                       higth_adjust=5)
-
+    bg = SqliteDict(exe_dir_path + '/setting.sqlite').__getitem__("theme")[0]
+    countboard = CountBoard(title="CountBoard",
+                            icon="favicon.ico",
+                            alpha=0.9,
+                            topmost=0,
+                            bg="#000000",
+                            width=300,
+                            height=190,
+                            width_adjust=20,
+                            higth_adjust=20)
 
 # -w不带控制行
-# 用户名带空格--用引号
-# pyinstaller -F -i E:\favicon.ico "C:\Users\Gao yongxian\PycharmProjects\CountBoard\CountBoard.py" -w
+# 用户名带空格--用引号C:\Users\Gao yongxian\PycharmProjects\CountBoard
+# pyinstaller -F -i "C:\Users\Gao yongxian\PycharmProjects\CountBoard\favicon.ico" "C:\Users\Gao yongxian\PycharmProjects\CountBoard\Main_window.py" -w

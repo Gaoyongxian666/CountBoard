@@ -1,0 +1,8 @@
+_doc
+*.egg
+*.egg-info
+dist
+build
+.idea
+*.pyc
+pack

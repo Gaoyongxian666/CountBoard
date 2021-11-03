@@ -1,43 +1,37 @@
-![52破解](logo.png) 
+![52破解](logo.png)
 
-CountBoard 是一个基于Tkinter简单的,开源的桌面日程倒计时应用。
+CountBoard 是一个基于Tkinter开源的桌面日程倒计时应用。
 
-## 基本功能
-* 置顶功能  
-    * 是否使窗体一直保持在最上面。  
-* 简洁模式  
-    * 简洁模式使窗体更加简洁。  
-    * 此模式下不可调整大小,请提前在普通模式下调整大小。  
-* 设置功能  
-    * 修改主窗体背景颜色,修改计时模式。  
-* 透明设置  
-    * 调整窗体的透明度。  
+## 基本功能 
 * 修改功能  
     * 双击日程可修改或者删除。  
 * 计时模式
    * 普通模式指24小时以内算做一天。    
    * 紧迫模式指24小时以内算做零天。
+* 磁贴主题
+   * Acrylic(亚克力效果)。    
+   * Aero(毛玻璃效果)。
+* 控制大小
+   * 磁贴的右下角来控制大小。    
 
-## 开源地址
-* <https://github.com/Gaoyongxian666/CountBoard>
-
-## 反馈建议 & 检查更新
+## 主题美化 
+* [ttkbootstrap](https://github.com/israel-dryer/ttkbootstrap)
+ 
+## 项目地址 & 反馈更新
+* [Gitee](https://gitee.com/gao_yongxian/CountBoardl)
+* [Github](https://github.com/Gaoyongxian666/CountBoard)
 * [吾爱破解](https://www.52pojie.cn/thread-1529077-1-1.html)
-
-## 推荐配色
-* 主题颜色设置浅色 或者 主题颜色和日程背景颜色一致.
-* 颜色可以直接选择输入英文颜色,例如Navy是海军蓝,RoyalBlue是皇家蓝.
 
 
 ## 预览图
-![预览图](Snipaste_2021-10-17_00-51-05.png)  
+![预览图](Snipaste_2021-11-04_00-41-00.png)  
 
+![预览图](Snipaste_2021-11-04_00-41-15.png)  
 
-![预览图](Snipaste_2021-10-17_00-51-26.png)  
-
-
-![预览图](Snipaste_2021-10-17_00-51-40.png) 
+![预览图](Snipaste_2021-11-04_00-42-38.png) 
 
 ## 更新日志
+* V1.1
+   * 2021-11-04：修改外观，实现了亚克力效果和磨玻璃效果
 * V1.0
    * 2021-10-16：完成基本功能

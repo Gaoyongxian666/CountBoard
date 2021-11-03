@@ -9,7 +9,7 @@ class SysTrayIcon(object):
 
     def __init__(s, icon, hover_text, menu_options, on_quit, tk_window=None, default_menu_index=None,
                  window_class_name=None):
-        '''
+        """
         icon         需要显示的图标文件路径
         hover_text   鼠标停留在图标上方时显示的文字
         menu_options 右键菜单，格式: (('a', None, callback), ('b', None, (('b1', None, callback),)))
@@ -17,7 +17,7 @@ class SysTrayIcon(object):
         tk_window    传递Tk窗口，s.root，用于单击图标显示窗口
         default_menu_index 不显示的右键菜单序号
         window_class_name  窗口类名
-        '''
+        """
         s.icon = icon
         s.hover_text = hover_text
         s.on_quit = on_quit
@@ -47,8 +47,11 @@ class SysTrayIcon(object):
         wc.lpfnWndProc = message_map  # 也可以指定wndproc.
         s.classAtom = win32gui.RegisterClass(wc)
 
+    def restart(s, hwnd, msg, wparam, lparam):
+        s.refresh()
+
     def activation(s):
-        '''激活任务栏图标，不用每次都重新创建新的托盘图标'''
+        """激活任务栏图标，不用每次都重新创建新的托盘图标"""
         hinst = win32gui.GetModuleHandle(None)  # 创建窗口。
         style = win32con.WS_OVERLAPPED | win32con.WS_SYSMENU
         s.hwnd = win32gui.CreateWindow(s.classAtom,
@@ -60,15 +63,15 @@ class SysTrayIcon(object):
                                        0, 0, hinst, None)
         win32gui.UpdateWindow(s.hwnd)
         s.notify_id = None
-        s.refresh(title='软件已后台！', msg='点击重新打开', time=500)
+        s.refresh_icon()
 
         win32gui.PumpMessages()
 
     def refresh(s, title='', msg='', time=500):
-        '''刷新托盘图标
+        """刷新托盘图标
            title 标题
            msg   内容，为空的话就不显示提示
-           time  提示显示时间'''
+           time  提示显示时间"""
         hinst = win32gui.GetModuleHandle(None)
         if os.path.isfile(s.icon):
             icon_flags = win32con.LR_LOADFROMFILE | win32con.LR_DEFAULTSIZE
@@ -85,14 +88,42 @@ class SysTrayIcon(object):
         s.notify_id = (s.hwnd, 0,  # 句柄、托盘图标ID
                        win32gui.NIF_ICON | win32gui.NIF_MESSAGE | win32gui.NIF_TIP | win32gui.NIF_INFO,
                        # 托盘图标可以使用的功能的标识
-                       win32con.WM_USER + 20, hicon, s.hover_text,  # 回调消息ID、托盘图标句柄、图标字符串
-                       msg, time, title,  # 提示内容、提示显示时间、提示标题
+                       win32con.WM_USER + 20, hicon,
+                       s.hover_text,  # 回调消息ID、托盘图标句柄、图标字符串
+                       msg,
+                       time,
+                       title,  # 提示内容、提示显示时间、提示标题
                        win32gui.NIIF_INFO  # 提示用到的图标
                        )
         win32gui.Shell_NotifyIcon(message, s.notify_id)
 
+    def refresh_icon(s, **data):
+        hinst = win32gui.GetModuleHandle(None)
+        if os.path.isfile(s.icon):  # 尝试找到自定义图标
+            icon_flags = win32con.LR_LOADFROMFILE | win32con.LR_DEFAULTSIZE
+            hicon = win32gui.LoadImage(hinst,
+                                       s.icon,
+                                       win32con.IMAGE_ICON,
+                                       0,
+                                       0,
+                                       icon_flags)
+        else:  # 找不到图标文件 - 使用默认值
+            hicon = win32gui.LoadIcon(0, win32con.IDI_APPLICATION)
+
+        if s.notify_id:
+            message = win32gui.NIM_MODIFY
+        else:
+            message = win32gui.NIM_ADD
+        s.notify_id = (s.hwnd,
+                       0,
+                       win32gui.NIF_ICON | win32gui.NIF_MESSAGE | win32gui.NIF_TIP,
+                       win32con.WM_USER + 20,
+                       hicon,
+                       s.hover_text)
+        win32gui.Shell_NotifyIcon(message, s.notify_id)
+
     def show_menu(s):
-        '''显示右键菜单'''
+        """显示右键菜单"""
         menu = win32gui.CreatePopupMenu()
         s.create_menu(menu, s.menu_options)
 
@@ -106,6 +137,9 @@ class SysTrayIcon(object):
                                 s.hwnd,
                                 None)
         win32gui.PostMessage(s.hwnd, win32con.WM_NULL, 0, 0)
+
+    def show_window(self):
+        self.root.deiconify()  # 显示tk窗口
 
     def _add_ids_to_menu_options(s, menu_options):
         result = []
@@ -122,40 +156,37 @@ class SysTrayIcon(object):
             s._next_action_id += 1
         return result
 
-    def restart(s, hwnd, msg, wparam, lparam):
-        s.refresh()
-
     def destroy(s, hwnd=None, msg=None, wparam=None, lparam=None, exit=1):
         nid = (s.hwnd, 0)
         win32gui.Shell_NotifyIcon(win32gui.NIM_DELETE, nid)
-        win32gui.PostQuitMessage(0)  # 终止应用程序。
-        if exit and s.on_quit:
-            s.on_quit()  # 需要传递自身过去时用 s.on_quit(s)
-        else:
-            s.root.deiconify()  # 显示tk窗口
+        win32gui.PostQuitMessage(0)  # 退出托盘图标
+        if s.on_quit:
+            s.on_quit()  # 运行传递的on_quit
+
+
 
     def notify(s, hwnd, msg, wparam, lparam):
-        '''鼠标事件'''
-        if lparam == win32con.WM_LBUTTONDBLCLK:  # 双击左键
-            pass
-        elif lparam == win32con.WM_RBUTTONUP:  # 右键弹起
-            s.show_menu()
-        elif lparam == win32con.WM_LBUTTONUP:  # 左键弹起
-            s.destroy(exit=0)
-        return True
-        """
-        可能的鼠标事件：
-          WM_MOUSEMOVE      #光标经过图标
-          WM_LBUTTONDOWN    #左键按下
-          WM_LBUTTONUP      #左键弹起
-          WM_LBUTTONDBLCLK  #双击左键
-          WM_RBUTTONDOWN    #右键按下
-          WM_RBUTTONUP      #右键弹起
-          WM_RBUTTONDBLCLK  #双击右键
-          WM_MBUTTONDOWN    #滚轮按下
-          WM_MBUTTONUP      #滚轮弹起
-          WM_MBUTTONDBLCLK  #双击滚轮
-        """
+            '''鼠标事件'''
+            if lparam == win32con.WM_LBUTTONDBLCLK:  # 双击左键
+                pass
+            elif lparam == win32con.WM_RBUTTONUP:  # 右键弹起
+                s.show_menu()
+            elif lparam == win32con.WM_LBUTTONUP:  # 左键弹起
+                s.show_window()
+            return True
+            """
+            可能的鼠标事件：
+              WM_MOUSEMOVE      #光标经过图标
+              WM_LBUTTONDOWN    #左键按下
+              WM_LBUTTONUP      #左键弹起
+              WM_LBUTTONDBLCLK  #双击左键
+              WM_RBUTTONDOWN    #右键按下
+              WM_RBUTTONUP      #右键弹起
+              WM_RBUTTONDBLCLK  #双击右键
+              WM_MBUTTONDOWN    #滚轮按下
+              WM_MBUTTONUP      #滚轮弹起
+              WM_MBUTTONDBLCLK  #双击滚轮
+            """
 
     def create_menu(s, menu, menu_options):
         for option_text, option_icon, option_action, option_id in menu_options[::-1]:
@@ -200,6 +231,7 @@ class SysTrayIcon(object):
     def execute_menu_option(s, id):
         menu_action = s.menu_actions_by_id[id]
         if menu_action == s.QUIT:
+            print("ss")
             win32gui.DestroyWindow(s.hwnd)
         else:
             menu_action(s)
