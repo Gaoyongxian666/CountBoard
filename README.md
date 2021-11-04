@@ -1,5 +1,3 @@
-![52破解](logo.png)
-
 CountBoard 是一个基于Tkinter开源的桌面日程倒计时应用。
 
 ## 基本功能 
