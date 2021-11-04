@@ -18,7 +18,7 @@ CountBoard 是一个基于Tkinter开源的桌面日程倒计时应用。
 * [ttkbootstrap](https://github.com/israel-dryer/ttkbootstrap)
  
 ## 项目地址 & 反馈更新
-* [Gitee](https://gitee.com/gao_yongxian/CountBoardl)
+* [Gitee](https://gitee.com/gao_yongxian/CountBoard)
 * [Github](https://github.com/Gaoyongxian666/CountBoard)
 * [吾爱破解](https://www.52pojie.cn/thread-1529077-1-1.html)
 
