@@ -9,11 +9,10 @@
 import os
 import sys
 import tkinter as tk
-import webbrowser
 from queue import Queue
 from threading import Thread
-from tkinter import ttk, BOTTOM, TOP, X
-from tkinter.ttk import Scrollbar, Frame
+from tkinter import  BOTTOM, TOP, X
+from tkinter.ttk import Frame
 from sqlitedict import SqliteDict
 from CountBoard import CountBoard, Help_window, Ask_del_window, Newtask_window
 from SysTrayIcon import SysTrayIcon
@@ -521,10 +520,13 @@ class Main_window(Style):
         return tab
 
     def open_url1(self, event):
-        webbrowser.open("https://github.com/Gaoyongxian666/CountBoard", new=0)
+        pass
+        # webbrowser.open("https://github.com/Gaoyongxian666/CountBoard", new=0)
 
     def open_url2(self, event):
-        webbrowser.open("https://gitee.com/gao_yongxian/CountBoard", new=0)
+        pass
+        # webbrowser.open("https://gitee.com/gao_yongxian/CountBoard", new=0)
+
 
     def button_frame(self, widget_frame):
         btn_frame = ttk.Frame(widget_frame)

@@ -1,7 +1,7 @@
 # coding:utf-8
 from ctypes import POINTER, c_bool, c_int, pointer, sizeof, WinDLL, byref
 from ctypes.wintypes import DWORD, LONG, LPCVOID
-from win32 import win32api, win32gui
+import win32api, win32gui
 from win32.lib import win32con
 
 from c_structures import (

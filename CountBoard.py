@@ -1,9 +1,5 @@
-import ctypes
 import random
-import threading
 import tkinter as tk
-from ctypes import cdll
-from ctypes.wintypes import HWND, DWORD
 from datetime import datetime
 from queue import Queue
 from threading import Thread
