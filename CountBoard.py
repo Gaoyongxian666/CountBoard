@@ -10,7 +10,6 @@ import functools
 import logging
 import os
 import time
-from pathlib import Path
 import win32api
 import win32con
 from sqlitedict import SqliteDict
@@ -350,7 +349,7 @@ class MainWindow(CustomWindow, Style):
         """
         检查更新
         """
-        UpdateWindow(title="检查更新", height=100, per_window=self, version=self.version)
+        UpdateWindow(title="检查更新", height=100, pre_window=self, version=self.version)
 
     def set_reset(self):
         """
@@ -368,7 +367,7 @@ class MainWindow(CustomWindow, Style):
         """
         使用说明
         """
-        HelpWindow(title='使用说明', width=1000, height=600, path=self.exe_dir_path + "/README.md")
+        HelpWindow(title='使用说明', width=1000, height=600, path=self.exe_dir_path + "/introduction.md")
 
     def create_task(self):
         """

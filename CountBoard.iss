@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "CountBoard"
-#define MyAppVersion "1.2.0.3"
+#define MyAppVersion "1.2.0.4"
 #define MyAppPublisher "Gaoyongxian"
 #define MyAppURL "https://github.com/Gaoyongxian666/CountBoard"
 #define MyAppExeName "CountBoard.exe"
@@ -41,10 +41,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\cacert.pem"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\favicon.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\Snipaste_2021-11-04_00-41-00.png"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\Snipaste_2021-11-04_00-41-15.png"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\Snipaste_2021-11-04_00-42-38.png"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\introduction.md"; DestDir: "{app}"; Flags: ignoreversion
 
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 

@@ -24,12 +24,6 @@ CountBoard 是一个基于Tkinter开源的桌面日程倒计时应用。
 * [吾爱破解](https://www.52pojie.cn/thread-1529077-1-1.html)
 * [小众软件](https://meta.appinn.net/t/topic/27272/33)
 
-## 预览图
-![预览图](https://pic.imgdb.cn/item/6182c6a32ab3f51d91124da9.png)  
-
-![预览图](https://pic.imgdb.cn/item/6182c6a32ab3f51d91124dac.png)  
-
-![预览图](https://pic.imgdb.cn/item/6182c6a32ab3f51d91124dbb.png) 
 
 ## 更新日志
 * V1.2
@@ -42,10 +36,3 @@ CountBoard 是一个基于Tkinter开源的桌面日程倒计时应用。
 ## 贡献者(欢迎PR)
 * [rtrobin](https://github.com/rtrobin)
    * Use cx-freeze package to freeze application.
-
-## 下载地址
-
-### 2021-11-10更新
-* 安装包：[https://gaoyongxian.lanzoui.com/i0lCAwcznqd](https://gaoyongxian.lanzoui.com/i0lCAwcznqd)
-* 便携版：[https://gaoyongxian.lanzoui.com/iipBQwcwscb](https://gaoyongxian.lanzoui.com/iipBQwcwscb)
-* 32位版：[https://gaoyongxian.lanzoui.com/iLn03wcxfqd](https://gaoyongxian.lanzoui.com/iLn03wcxfqd)

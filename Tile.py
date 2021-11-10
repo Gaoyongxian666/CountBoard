@@ -12,6 +12,7 @@ import tkinter as tk
 import traceback
 import webbrowser
 from datetime import datetime
+from pathlib import Path
 from queue import Queue
 from threading import Thread
 from tkinter import *
@@ -660,11 +661,11 @@ class WaitWindow(CustomWindow):
 class UpdateWindow(CustomWindow):
     """检查更新页面"""
 
-    def __init__(self, per_window, version, *args, **kwargs):
+    def __init__(self, version, *args, **kwargs):
         self.root = tk.Toplevel()
         super().__init__(*args, **kwargs)
 
-        self.per_window = per_window
+        self.exe_dir_path= self.pre_window.exe_dir_path
         self.version = version
         self.update_version = version
         self.update_url = ""
@@ -761,10 +762,11 @@ class UpdateWindow(CustomWindow):
     '''-----------------------------------请求线程-----------------------------------------------'''
 
     def update(self):
+        update_path=str(Path(self.exe_dir_path).joinpath("update.txt"))
         try:
-            with open("update.txt", "wb") as f:
+            with open(update_path, "wb") as f:
                 f.write(requests.get("https://aidcs-1256440297.cos.ap-beijing.myqcloud.com/update.txt").content)
-            with open("update.txt", "r", encoding='utf8') as f:
+            with open(update_path, "r", encoding='utf8') as f:
                 config = f.readline()
             config_dict = json.loads(config)
             self.update_version = config_dict["version"]
@@ -774,7 +776,7 @@ class UpdateWindow(CustomWindow):
             else:
                 self.queue.put("不需更新")
         except:
-            self.per_window.logger.info(traceback.format_exc())
+            self.pre_window.logger.info(traceback.format_exc())
             self.queue.put("网络错误")
 
 
