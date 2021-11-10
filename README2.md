@@ -42,3 +42,10 @@ CountBoard 是一个基于Tkinter开源的桌面日程倒计时应用。
 ## 贡献者(欢迎PR)
 * [rtrobin](https://github.com/rtrobin)
    * Use cx-freeze package to freeze application.
+
+## 下载地址
+记得把之前安装路径尽量在用户文件夹下
+### 2021-11-10更新
+* 安装包：[https://gaoyongxian.lanzoui.com/i0lCAwcznqd](https://gaoyongxian.lanzoui.com/i0lCAwcznqd)
+* 便携版：[https://gaoyongxian.lanzoui.com/iipBQwcwscb](https://gaoyongxian.lanzoui.com/iipBQwcwscb)
+* 32位版：[https://gaoyongxian.lanzoui.com/iLn03wcxfqd](https://gaoyongxian.lanzoui.com/iLn03wcxfqd)

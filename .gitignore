@@ -9,3 +9,4 @@ pack
 *.sqlite
 .venv
 logs
+pack32

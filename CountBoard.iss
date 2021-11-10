@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "CountBoard"
-#define MyAppVersion "1.2.0.2"
+#define MyAppVersion "1.2.0.3"
 #define MyAppPublisher "Gaoyongxian"
 #define MyAppURL "https://github.com/Gaoyongxian666/CountBoard"
 #define MyAppExeName "CountBoard.exe"
@@ -18,7 +18,7 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName={userdocs}/{#MyAppName}
+DefaultDirName={userdocs}/{#MyAppName}/{#MyAppVersion}
 DisableProgramGroupPage=yes
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 ;PrivilegesRequired=lowest
@@ -45,6 +45,7 @@ Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\README
 Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\Snipaste_2021-11-04_00-41-00.png"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\Snipaste_2021-11-04_00-41-15.png"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\Snipaste_2021-11-04_00-42-38.png"; DestDir: "{app}"; Flags: ignoreversion
+
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
