@@ -1,4 +1,3 @@
-# coding:utf-8
 from ctypes import POINTER, c_bool, c_int, pointer, sizeof, WinDLL, byref
 from ctypes.wintypes import DWORD, LONG, LPCVOID
 import win32api, win32gui
@@ -44,7 +43,7 @@ class WindowEffect:
         self.winCompAttrData.SizeOfData = sizeof(self.accentPolicy)
         self.winCompAttrData.Data = pointer(self.accentPolicy)
 
-    def setAcrylicEffect(self, hWnd, gradientColor: str = "20408000", isEnableShadow: bool = True,
+    def setAcrylicEffect(self, hWnd, setAcrylicEffect,gradientColor: str = "01010100", isEnableShadow: bool = True,
                          animationId: int = 0):
         """ Add the acrylic effect to the window
 
@@ -63,6 +62,9 @@ class WindowEffect:
             Turn on matte animation
         """
         # Acrylic mixed color
+        if setAcrylicEffect==1:
+            gradientColor="00000000"
+
         gradientColor = (
                 gradientColor[6:]
                 + gradientColor[4:6]
@@ -82,7 +84,7 @@ class WindowEffect:
         self.accentPolicy.AnimationId = animationId
 
         # enable acrylic effect
-        self.SetWindowCompositionAttribute(hWnd, pointer(self.winCompAttrData))
+        self.SetWindowCompositionAttribute(int(hWnd), pointer(self.winCompAttrData))
 
     def setAeroEffect(self, hWnd):
         """ Add the aero effect to the window
@@ -111,36 +113,32 @@ class WindowEffect:
             Window handle
         """
         self.accentPolicy.AccentState = ACCENT_STATE.ACCENT_DISABLED.value[0]
-        # ACCENT_INVALID_STATE
-        # accentFlags = DWORD(0x20 | 0x40 | 0x80 |
-        #                     0x100)
-        # self.accentPolicy.AccentFlags = accentFlags
         self.SetWindowCompositionAttribute(hWnd, pointer(self.winCompAttrData))
 
-    def reBackgroundEffect(self, hWnd):
-        """ Remove background effect
+    # def reBackgroundEffect(self, hWnd):
+    #     """ Remove background effect
+    #
+    #     Parameters
+    #     ----------
+    #     hWnd: int or `sip.voidptr`
+    #         Window handle
+    #     """
+    #     self.accentPolicy.AccentState = ACCENT_STATE.ACCENT_INVALID_STATE.value[0]
+    #     self.SetWindowCompositionAttribute(hWnd, pointer(self.winCompAttrData))
 
-        Parameters
-        ----------
-        hWnd: int or `sip.voidptr`
-            Window handle
-        """
-        self.accentPolicy.AccentState = ACCENT_STATE.ACCENT_INVALID_STATE.value[0]
-        self.SetWindowCompositionAttribute(hWnd, pointer(self.winCompAttrData))
-
-    @staticmethod
-    def moveWindow(hWnd):
-        """ Move the window
-
-        Parameters
-        ----------
-        hWnd: int or `sip.voidptr`
-            Window handle
-        """
-        win32gui.ReleaseCapture()
-        win32api.SendMessage(
-            hWnd, win32con.WM_SYSCOMMAND, win32con.SC_MOVE + win32con.HTCAPTION, 0
-        )
+    # @staticmethod
+    # def moveWindow(hWnd):
+    #     """ Move the window
+    #
+    #     Parameters
+    #     ----------
+    #     hWnd: int or `sip.voidptr`
+    #         Window handle
+    #     """
+    #     win32gui.ReleaseCapture()
+    #     win32api.SendMessage(
+    #         hWnd, win32con.WM_SYSCOMMAND, win32con.SC_MOVE + win32con.HTCAPTION, 0
+    #     )
 
     def addShadowEffect(self, hWnd):
         """ Add DWM shadow to the window

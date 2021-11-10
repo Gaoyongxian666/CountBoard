@@ -43,3 +43,8 @@ setup(
     executables=executables,
     options=options
 )
+
+# Use cx-freeze package to freeze application.
+#
+# pip install cx-freeze
+# Use python cx_setup.py bdist_msi command to create windows msi install file.

@@ -120,8 +120,9 @@ class Style(ttk.Style):
         # this parameter has been replaced internally with py file
         if "themes_file" in kwargs:
             del kwargs["themes_file"]
+        # super().__init__(*args, **kwargs)
+        super().__init__()
 
-        super().__init__(*args, **kwargs)
         self._styler = None
         self._theme_names = set(super().theme_names())
         self._theme_objects = {}  # prevents image garbage collection

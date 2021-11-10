@@ -1,750 +1,806 @@
-import random
-import tkinter as tk
-from datetime import datetime
-from queue import Queue
-from threading import Thread
-from tkinter import *
-from tkinter import ttk, colorchooser
-from tkinter.filedialog import askopenfilename
-import pywintypes
-from PIL import Image, ImageTk
-from markdown2 import Markdown
+# -*- coding: UTF-8 -*-
+"""
+@Project ：CountBoard
+@File ：CountBoard.py
+@Author ：Gao yongxian
+@Date ：2021/11/8 11:00
+@contact: g1695698547@163.com
+"""
+import functools
+import logging
+import os
+import time
+from pathlib import Path
+import win32api
+import win32con
 from sqlitedict import SqliteDict
-from TkHtmlView import TkHtmlView
-import sys, os
-from ttkbootstrap.widgets.calendar import DateEntry
-from window_effect import WindowEffect
+from Tile import *
+from CustomWindow import CustomWindow
+from SysTrayIcon import SysTrayIcon
+from ttkbootstrap import Style
+from tkinter import ttk
 
 
-class CountBoard(object):
-    def __init__(self, title, icon, alpha, topmost, bg, width, height, width_adjust, higth_adjust, theme_name,
-                 exe_dir_path,mydb_dict,mysetting_dict):
+class MainWindow(CustomWindow, Style):
+    """主窗体"""
+
+    def __init__(self, version, icon, logger, exe_dir_path, *args, **kwargs):
+        self.root = tk.Tk()
+        super().__init__(*args, **kwargs)
+
         # 传参
-        self.title = title
-        self.icon = icon
-        self.alpha = alpha
-        self.topmost = topmost
-        self.width = width
-        self.height = height
-        self.width_adjust = width_adjust
-        self.higth_adjust = higth_adjust
-        self.bg = bg
+        self.version = version
+        self.logger = logger
         self.exe_dir_path = exe_dir_path
-        self.mydb_dict = mydb_dict
-        self.mysetting_dict = mysetting_dict
+        self.icon = icon
 
+        # 布局初始化
+        self.__init__2()
 
-        # 窗口初始化
-        self.root = tk.Toplevel()
-        self.root.title(title)
-        self.root.configure(bg=bg)
-        self.root.iconbitmap(icon)
-        self.root.wm_attributes('-alpha', alpha)
-        self.root.wm_attributes('-topmost', topmost)
-        self.root.geometry("%dx%d%+d%+d" % (width, height, width_adjust, higth_adjust))
-        print("%dx%d%+d%+d" % (width, height, width_adjust, higth_adjust))
-        self.root.maxsize(width, 2000)
-        self.root.minsize(width, 80)
-        self.root.overrideredirect(1)
+        # 自定义关闭按钮
+        self.root.protocol("WM_DELETE_WINDOW", self.close_)
+        self.set_position("center")
+
+        # 开启更新UI队列
         self.queue = Queue()  # 子线程与主线程的队列作为中继
         self.root.after(1000, self.relay)
 
-        # 布局1
-        self.frame_bottom = Frame(self.root, bg=self.bg, height=15, width=self.width)
-        self.frame_bottom.pack(side=BOTTOM)
-        self.frame_bottom.pack_propagate(0)
-        # 自定义的sizegrip
-        style = ttk.Style()
-        style.configure('myname.TSizegrip', background=self.bg)
-        self.sizegrip = ttk.Sizegrip(self.frame_bottom, style='myname.TSizegrip')
+        # 开启常驻后台线程
+        self.backend_thread = Thread(target=self.backend)
+        self.backend_thread.setDaemon(True)
+        self.backend_thread.start()
 
-        # 布局2
-        self.frame_top = Frame(self.root, bg=self.bg)
-        self.frame_top.pack(side=TOP, fill="both", expand=True)
-        # 画布
-        self.canvas = Canvas(self.frame_top)
-        self.canvas = Canvas(self.frame_top, bg=bg)
-        self.canvas.config(highlightthickness=0)
-        self.canvas.pack(side=tk.LEFT, fill="both", expand=True)
-        # 事件
-        self.canvas.bind('<ButtonPress-1>', self._on_tap)
-        self.canvas.bind('<ButtonRelease-1>', self._on_re)
-        self.canvas.bind('<B1-Motion>', self._on_move)
-        self.frame_bottom.bind('<ButtonPress-1>', self._on_tap)
-        self.frame_bottom.bind('<ButtonRelease-1>', self._on_re)
-        self.frame_bottom.bind('<B1-Motion>', self._on_move)
+        # 开启耗时操作线程
+        self.initialization_thread = Thread(target=self.initialization)
+        self.initialization_thread.setDaemon(True)
+        self.initialization_thread.start()
 
-        # 其他初始化
-        self.root_x, self.root_y, self.abs_x, self.abs_y = 0, 0, 0, 0
+        self.root.mainloop()
 
-        # 获取句柄的两种方式
-        self.hwnd = pywintypes.HANDLE(int(self.root.frame(), 16))
-        # self.hwnd = win32gui.FindWindow(None, title)
-        self.window_effect = WindowEffect()
-        self.tile_theme_name = self.mysetting_dict['tile_theme_name'][0]
-        self.tile_sizegrip = self.mysetting_dict['tile_sizegrip'][0]
-        self.task_radius = self.mysetting_dict['task_radius'][0]
-        self.set_sizegrip(self.tile_sizegrip)
-        self.set_theme(tile_theme_name=self.tile_theme_name)
+    def __init__2(self):
+        """
+        布局初始化(必须在主线程进行的操作，比如设置主题，窗口布局,变量初始化)
+        """
+        # 设置主题,变量初始化
+        self.theme_use()
+        self.theme_name = tk.StringVar()
+        self.tile_theme_name = tk.StringVar()
+        self.mode = tk.StringVar()
+        self.tile_top = tk.IntVar()
+        self.task_radius = tk.IntVar()
+        self.reopen_to_backend = tk.IntVar()
+        self.auto_run = tk.IntVar()
+        self.tile_auto_margin = tk.IntVar()
+        self.tile_transparent = tk.IntVar()
+        self.tile_auto_margin_length = tk.IntVar()
 
-        # 任务列表
-        self.tasks = Tasks(pre_window=self)
-        self.tasks.show_all()
+        # 界面布局
+        self.main_frame = ttk.Frame(self.root, style='custom.TFrame', padding=10)
+        self.main_frame.pack(side=BOTTOM, fill="both", expand=True)
+        self.nb = ttk.Notebook(self.main_frame)
+        self.nb.pack(fill=tk.BOTH, expand=tk.YES)
+        self.main_tab = self.create_main_tab
+        self.nb.add(self.main_tab, text='主页')
 
-        # self.root.mainloop()
+        self.control_tab = self.create_control_tab
+        self.nb.add(self.control_tab, text='控制')
+
+        self.orhter_tab = self.create_orther_tab
+        self.nb.add(self.orhter_tab, text='其他')
+
+        self.about_tab = self.create_about_tab
+        self.nb.add(self.about_tab, text='关于')
+
+    '''-----------------------------------更新UI 线程-----------------------------------------------'''
 
     def relay(self):
         """
-        更新主线程UI
+        更新UI
         """
         while not self.queue.empty():
             content = self.queue.get()
-            print(content)
-            if content == "show_sizegrip":
-                self.update_sizegrip(1)
-            elif content == "close_sizegrip":
-                self.update_sizegrip(0)
-            elif content == "update_theme_Acrylic":
-                self.update_theme("Acrylic")
-            elif content == "update_theme_Aero":
-                self.update_theme("Aero")
-            elif content == "set_task_right_angle":
-                self.update_task_radius(0)
-            elif content == "set_task_round_angle":
-                self.update_task_radius(25)
-            elif content == "set_window_top":
-                self.set_top(1)
-            elif content == "cancel_window_top":
-                self.set_top(0)
-            elif content == "refresh_tasks":
-                self.tasks.refresh_tasks()
+            if content == "show_wait_window":
+                self.wait_window = WaitWindow(width=300, height=80, title="读取数据")
+
+            elif content == "close_wait_window":
+                self.wait_window.close()
+
+            elif content == "show_tile":
+                self.tile = Tile(
+                    title="CountBoardTile",
+                    topmost=self.tile_top.get(),
+                    bg="#000000",
+                    position="custom",
+                    overrideredirect=1,
+                    theme_name=self.tile_theme_name,
+                    exe_dir_path=self.exe_dir_path,
+                    mydb_dict=self.mydb_dict,
+                    mysetting_dict=self.mysetting_dict,
+                    logger=self.logger,
+                    _auto_margin=self.tile_auto_margin.get(),
+                    offset=self.tile_auto_margin_length.get(),
+                    _geometry=self.tile_geometry
+                )
+            elif content == "judge_reopen_to_backend":
+                if self.reopen_to_backend.get() == 1:
+                    self.root.withdraw()
+            elif content == "change_theme":
+                self.change_theme(None)
 
         self.root.after(100, self.relay)
 
-    def update_theme(self, tile_theme_name):
-        """
-        外部调用，更新主题
-        """
-        self.tile_theme_name=tile_theme_name
-        self.window_effect.removeBackgroundEffect(self.hwnd)
-        if tile_theme_name == "Acrylic":
-            self.window_effect.setAcrylicEffect(self.hwnd)
-        else:
-            self.window_effect.setAeroEffect(self.hwnd)
+    '''-----------------------------------耗时操作线程-----------------------------------------------'''
 
-    def update_task_radius(self, task_radius):
+    def initialization(self):
         """
-        外部调用，设置是否圆角
+        执行耗时操作，先布局设变量，然后在此线程中动态修改
         """
-        self.tasks.refresh_(task_radius)
+        self.queue.put("show_wait_window")
 
-    def update_sizegrip(self, flag):
+        if not os.path.exists(self.exe_dir_path + "/my_setting.sqlite"):
+            self.logger.info("第一次运行")
+            self.reset()
+
+        # 读取数据库
+        self.mydb_dict = SqliteDict(self.exe_dir_path + '/my_db.sqlite', autocommit=True)
+        self.mysetting_dict = SqliteDict(self.exe_dir_path + '/my_setting.sqlite', autocommit=True)
+        self.logger.info([(x, i) for x, i in self.mysetting_dict.items()])
+
+        self.tile_geometry = self.mysetting_dict["tile_geometry"][0]
+        self.task_geometry = self.mysetting_dict["task_geometry"][0]
+
+        self.theme_name.set(self.mysetting_dict["theme_name"][0])
+        self.tile_theme_name.set(self.mysetting_dict["tile_theme_name"][0])
+        self.mode.set(self.mysetting_dict["mode"][0])
+        self.tile_top.set(self.mysetting_dict["tile_top"][0])
+        self.task_radius.set(self.mysetting_dict["task_radius"][0])
+        self.reopen_to_backend.set(self.mysetting_dict["reopen_to_backend"][0])
+        self.auto_run.set(self.mysetting_dict['auto_run'][0])
+        self.tile_auto_margin.set(self.mysetting_dict['tile_auto_margin'][0])
+        self.tile_auto_margin_length.set(self.mysetting_dict['tile_auto_margin_length'][0])
+        self.tile_transparent.set(self.mysetting_dict['tile_transparent'][0])
+
+        self.time_scale.set_value(self.mysetting_dict["time_scale"][0])
+        self.title_scale.set_value(self.mysetting_dict["title_scale"][0])
+        self.count_scale.set_value(self.mysetting_dict["count_scale"][0])
+
+        self.task_width_scale.set_value(self.task_geometry[0])
+        self.task_height_scale.set_value(self.task_geometry[1])
+        self.task_margin_x_scale.set_value(self.task_geometry[2])
+        self.task_margin_y_scale.set_value(self.task_geometry[3])
+
+        self.queue.put("judge_reopen_to_backend")
+
+        self.queue.put("show_tile")
+        # self.queue.put("change_theme")  # 解决因主题改变导致resize控件样式改变
+        self.queue.put("close_wait_window")
+
+    def reset(self):
         """
-        外部调用，是否显示大小握把
+        恢复默认配置或者初始化配置
         """
-        if flag == 1:
-            self.sizegrip.pack(side=RIGHT, anchor="ne")
-            self.sizegrip.bind('<ButtonPress-1>', self._on_tap)
-            self.sizegrip.bind('<ButtonRelease-1>', self._on_re)
-            self.sizegrip.bind('<B1-Motion>', self.resize)
-        else:
-            self.sizegrip.pack_forget()
-            self.sizegrip.unbind_all('<ButtonPress-1>')
-            self.sizegrip.unbind_all('<ButtonRelease-1>')
-            self.sizegrip.unbind_all('<B1-Motion>')
+        mydb_dict = SqliteDict(self.exe_dir_path + '/my_db.sqlite', autocommit=True)
+        mysetting_dict = SqliteDict(self.exe_dir_path + '/my_setting.sqlite', autocommit=True)
+        mydb_dict.clear()
+        mysetting_dict.clear()
 
-    def set_sizegrip(self, flag):
+        mysetting_dict['tile_theme_name'] = ["Acrylic"]
+        mysetting_dict['tile_geometry'] = [(300, 84, 20, 20)]
+        mysetting_dict['tile_top'] = [1]
+        mysetting_dict['tile_auto_margin'] = [1]
+        mysetting_dict['tile_auto_margin_length'] = [3]
+        mysetting_dict['tile_transparent'] = [0]
+
+        mysetting_dict['theme_name'] = ["sandstone"]
+        mysetting_dict['mode'] = ["普通模式"]
+        mysetting_dict['reopen_to_backend'] = [0]
+        mysetting_dict['auto_run'] = [0]
+
+        mysetting_dict['task_geometry'] = [(276, 60, 12, 12)]
+        mysetting_dict['task_radius'] = [0]
+        mysetting_dict['time_scale'] = [8]
+        mysetting_dict['title_scale'] = [14]
+        mysetting_dict['count_scale'] = [20]
+
+    '''-----------------------------------后台线程-----------------------------------------------'''
+
+    def backend(self, hover_text="CountBoard"):
         """
-        直接设置，是否显示大小握把
+        后台图标线程
         """
-        if flag == 1:
-            self.sizegrip.pack(side=RIGHT, anchor="ne")
-            self.sizegrip.bind('<ButtonPress-1>', self._on_tap)
-            self.sizegrip.bind('<ButtonRelease-1>', self._on_re)
-            self.sizegrip.bind('<B1-Motion>', self.resize)
-        else:
-            self.sizegrip.pack_forget()
-            self.sizegrip.unbind_all('<ButtonPress-1>')
-            self.sizegrip.unbind_all('<ButtonRelease-1>')
-            self.sizegrip.unbind_all('<B1-Motion>')
+        menu_options = (('主页', None, self.show),)
+        self.SysTrayIcon = SysTrayIcon(
+            icon=self.icon,  # 图标
+            hover_text=hover_text,  # 光标停留显示文字
+            menu_options=menu_options,  # 右键菜单
+            on_quit=self.exit,  # 退出调用
+            tk_window=self.root,  # Tk窗口
+        )
+        self.SysTrayIcon.activation()
 
-    def resize(self, event):
+    def close_(self):
         """
-        握把的回调函数，用来控制大小
+        重写关闭按钮
         """
-        deltax = event.x_root - self.root.winfo_rootx()
-        deltay = event.y_root - self.root.winfo_rooty()
-        if deltax < 1:
-            deltax = 1
-        if deltay < 1:
-            deltay = 1
-        self.root.geometry("%sx%s" % (deltax, deltay))
+        self.root.withdraw()
 
-    def set_theme(self, tile_theme_name):
+    def show(self, _sysTrayIcon=None):
         """
-        直接设置，设置主题
+        显示隐藏的窗体
         """
-        if tile_theme_name == "Acrylic":
-            self.window_effect.setAcrylicEffect(self.hwnd)
-        else:
-            self.window_effect.setAeroEffect(self.hwnd)
+        self.root.deiconify()
 
-    def set_background(self, bg):
+    def exit(self, _sysTrayIcon=None):
         """
-        设置Acrylic模式下，进行移动时的窗口背景
+        全部退出
         """
-        self.root.configure(bg=bg)
-        self.frame_top.configure(bg=bg)
-        self.canvas.configure(bg=bg)
-        self.frame_bottom.configure(bg=bg)
+        self.logger.info("后台退出")
+        self.root.destroy()
 
-    def set_top(self, flag):
+    '''-----------------------------------主页页面-----------------------------------------------'''
+
+    @property
+    def create_main_tab(self):
         """
-        外部调用，设置是否置顶
+        主页页面布局
         """
-        if flag == 1:
-            self.root.wm_attributes('-topmost', 1)
-        else:
-            self.root.wm_attributes('-topmost', 0)
+        tab = ttk.Frame(self.nb, padding=10)
 
-    def _on_re(self, event):
-        if self.tile_theme_name == "Acrylic":
-            self.window_effect.setAcrylicEffect(self.hwnd)
-            self.set_background(bg="black")
+        # 布局1
+        widget_frame1 = ttk.LabelFrame(
+            master=tab,
+            text='主要功能',
+            padding=10
+        )
+        widget_frame1.pack(fill=tk.X, pady=8)
+        self.__button_frame(widget_frame1)
 
-    def _on_move(self, event):
-        offset_x = event.x_root - self.root_x
-        offset_y = event.y_root - self.root_y
-        if self.width and self.height:
-            geo_str = "%sx%s+%s+%s" % (self.width, self.height,
-                                       self.abs_x + offset_x, self.abs_y + offset_y)
-        else:
-            geo_str = "+%s+%s" % (self.abs_x + offset_x, self.abs_y + offset_y)
-        self.root.geometry(geo_str)
+        # 布局2
+        widget_frame2 = ttk.LabelFrame(
+            master=tab,
+            text='计时模式',
+            padding=10
+        )
+        widget_frame2.pack(fill=tk.X, pady=8)
+        mode_list = ['普通模式', '紧迫模式']
+        mode_cbo = ttk.Combobox(
+            widget_frame2,
+            values=mode_list,
+            state="readonly",
+            textvariable=self.mode)
+        mode_cbo.pack(fill=tk.X, pady=5)
+        mode_cbo.bind("<<ComboboxSelected>>", self.change_mode)
 
-    def _on_tap(self, event):
-        if self.tile_theme_name == "Acrylic":
-            self.set_background(bg="grey")
-            self.window_effect.removeBackgroundEffect(self.hwnd)
+        # 布局3
+        widget_frame3 = ttk.LabelFrame(
+            master=tab,
+            text='磁贴主题',
+            padding=10
+        )
+        widget_frame3.pack(fill=tk.X, pady=8)
+        title_theme_list = ['Acrylic', 'Aero']
+        title_theme_cbo = ttk.Combobox(
+            widget_frame3,
+            values=title_theme_list,
+            state="readonly",
+            textvariable=self.tile_theme_name, )
+        title_theme_cbo.pack(fill=tk.X, pady=5)
+        title_theme_cbo.bind("<<ComboboxSelected>>", self.change_title_theme)
 
-        self.width = self.root.winfo_width()
-        self.height = self.root.winfo_height()
-        self.root_x, self.root_y = event.x_root, event.y_root
-        self.abs_x, self.abs_y = self.root.winfo_x(), self.root.winfo_y()
+        # 布局4
+        widget_frame4 = ttk.LabelFrame(
+            master=tab,
+            text='界面主题',
+            padding=10
+        )
+        widget_frame4.pack(fill=tk.X, pady=8)
+        themes = [t for t in sorted(self._theme_definitions.keys())]
+        themes_cbo = ttk.Combobox(
+            widget_frame4,
+            values=themes,
+            state="readonly",
+            textvariable=self.theme_name, )
+        themes_cbo.pack(fill=tk.X, pady=5)
+        themes_cbo.bind("<<ComboboxSelected>>", self.change_theme)
 
+        return tab
 
-class Tasks:
-    def __init__(self, pre_window, **kwargs, ):
-        # 传递的参数
-        self.pre_window = pre_window
-        self.root = pre_window.root
-        self.width = pre_window.width
-        self.exe_dir_path = pre_window.exe_dir_path
-        self.canvas = pre_window.canvas
-        self.mydb_dict = pre_window.mydb_dict
-        self.mysetting_dict = pre_window.mysetting_dict
-        self.task_radius = pre_window.task_radius
+    def __button_frame(self, widget_frame):
+        """主要功能按钮"""
+        btn_frame = ttk.Frame(widget_frame)
 
-        # x左右边距，y上下边距
-        self.task_init_x = 12
-        self.task_init_y = 12
-        # 高度，宽度，是否圆角
-        self.task_width = 276
-        self.task_height = 60
+        b2 = ttk.Button(
+            master=btn_frame,
+            text='新建日程',
+            bootstyle='outline',
+            command=self.create_task)
+        b2.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES, padx=(0, 5))
 
-        self.__init_update_time()
+        b3 = ttk.Button(
+            master=btn_frame,
+            text='删除全部',
+            bootstyle='outline',
+            command=self.del_all)
+        b3.pack(side=tk.LEFT, fill=tk.X, padx=(0, 5), expand=tk.YES)
 
-    def __init_update_time(self):
-        # 初始化更新时间
-        from datetime import datetime
-        for key, value in self.mydb_dict.iteritems():
-            startdate = datetime.today()
-            enddate = datetime.strptime(value[1], '%Y-%m-%d')
-            days = str((enddate - startdate).days)
-            self.mydb_dict[key] = [value[0], value[1], days, value[3], value[4], value[5]]
+        b1 = ttk.Button(
+            btn_frame,
+            text='使用说明',
+            bootstyle='outline',
+            command=self.help)
+        b1.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES, padx=(0, 5))
+
+        b4 = ttk.Button(
+            btn_frame,
+            text='检查更新',
+            bootstyle='outline',
+            command=self.set_update)
+        b4.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES, padx=(0, 5))
+
+        b5 = ttk.Button(
+            btn_frame,
+            text='恢复默认',
+            bootstyle='outline',
+            command=self.set_reset)
+        b5.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES, padx=(0, 5))
+
+        btn_frame.pack(fill=tk.X, pady=5)
+
+    def set_update(self):
+        """
+        检查更新
+        """
+        UpdateWindow(title="检查更新", height=100, per_window=self, version=self.version)
+
+    def set_reset(self):
+        """
+        恢复默认
+        """
+        AskResetWindow(title="恢复默认", pre_window=self, height=150)
 
     def del_all(self):
-        # 删除所有数据
-        self.canvas.delete("all")
-        for key in self.mydb_dict.iterkeys():
-            self.mydb_dict.__delitem__(key)
+        """
+        删除所有
+        """
+        AskDelWindow(title="删除全部", pre_window=self.tile, height=150)
 
-    def show_all(self):
-        # 展示当前数据库的所以元素
-        self.canvas.delete("all")
-        for value in sorted(self.mydb_dict.itervalues(), key=self.get_int_day):
-            self.add_task(value)
+    def help(self, **kwargs):
+        """
+        使用说明
+        """
+        HelpWindow(title='使用说明', width=1000, height=600, path=self.exe_dir_path + "/README.md")
 
-    def get_int_day(self, value):
-        # 返回第三个值,时间值
-        return int(value[2])
+    def create_task(self):
+        """
+        新建日程
+        """
+        NewTaskWindow(pre_window=self.tile, title="新建日程", height=180)
 
-    def round_rectangle(self, x1, y1, x2, y2, radius=25, **kwargs):
-        points = [x1 + radius, y1,
-                  x1 + radius, y1,
-                  x2 - radius, y1,
-                  x2 - radius, y1,
-                  x2, y1,
-                  x2, y1 + radius,
-                  x2, y1 + radius,
-                  x2, y2 - radius,
-                  x2, y2 - radius,
-                  x2, y2,
-                  x2 - radius, y2,
-                  x2 - radius, y2,
-                  x1 + radius, y2,
-                  x1 + radius, y2,
-                  x1, y2,
-                  x1, y2 - radius,
-                  x1, y2 - radius,
-                  x1, y1 + radius,
-                  x1, y1 + radius,
-                  x1, y1]
-        self.canvas.create_polygon(points, **kwargs, smooth=True, width=1, outline="#080808")
+    def change_mode(self, event):
+        """
+        修改计时模式
+        """
+        self.mysetting_dict["mode"] = [self.mode.get()]
+        self.tile.queue.put("refresh_tasks")
 
-    def add_task(self, value):
-        self.task_main_text = value[0]
-        self.task_time_text = value[1]
-        mode = self.mysetting_dict["mode"][0]
-        if mode == "普通模式":
-            self.task_countdown_text = str(int(value[2]) + 1)
+    def change_title_theme(self, event):
+        """
+        修改磁贴的主题
+        """
+        if self.tile_theme_name.get() == "Acrylic":
+            self.tile.queue.put("update_theme_Acrylic")
         else:
-            self.task_countdown_text = value[2]
-        self.task_color = value[3]
-        self.task_tag_name = value[4]
-        self.task_text_color = value[5]
+            self.tile.queue.put("update_theme_Aero")
+        self.mysetting_dict['tile_theme_name'] = [self.tile_theme_name.get()]
 
-        self.round_rectangle(self.task_init_x, self.task_init_y, self.task_init_x + self.task_width,
-                             self.task_init_y + self.task_height, radius=self.task_radius,
-                             fill=self.task_color,
-                             tag=(self.task_tag_name))
+    def change_theme(self, event):
+        """
+        更改界面主题
+        """
+        self.main_tab.destroy()
+        new_theme = self.theme_name.get()
+        self.theme_use(new_theme)
+        self.main_tab = self.create_main_tab
+        self.nb.insert(0, self.main_tab, text='主页')
+        self.nb.select(self.nb.tabs()[0])
+        self.theme_name.set(new_theme)
+        # # 因为会重置TSizegrip，所以要重新设置
+        # style = ttk.Style()
+        # style.configure('myname.TSizegrip', background="black")
+        # self.tile.sizegrip.config(style='myname.TSizegrip')
+        self.mysetting_dict["theme_name"] = [new_theme]
 
-        self.canvas.create_text(self.task_init_x + 8, self.task_init_y + 20,
-                                text=self.task_main_text,
-                                width=220,
-                                font=('microsoft yahei', 15, 'normal'),
-                                fill=self.task_text_color,
-                                anchor=W,
-                                justify=LEFT,
-                                tag=(self.task_tag_name))
+    '''-----------------------------------其他页面-----------------------------------------------'''
 
-        self.canvas.create_text(self.task_init_x + 8,
-                                self.task_init_y + 45,
-                                text=self.task_time_text,
-                                width=220,
-                                font=('Times', 8, 'italic'),
-                                fill=self.task_text_color,
-                                anchor=W,
-                                justify=LEFT,
-                                tag=(self.task_tag_name))
-        self.canvas.create_text(self.task_init_x + 250,
-                                self.task_init_y + 30,
-                                text=self.task_countdown_text + "天",
-                                width=220,
-                                font=('microsoft yahei', 20, 'bold'),
-                                fill=self.task_text_color,
-                                anchor=E,  # 以右侧为毛点
-                                justify=RIGHT,
-                                tag=(self.task_tag_name))
-        # 添加绑定函数
-        self.canvas.tag_bind(self.task_tag_name, '<Double-Button-1>',
-                             func=self.handler_adaptor(self.task_DoubleClick, task_tag_name=self.task_tag_name))
+    @property
+    def create_orther_tab(self):
+        """
+        其他页面布局
+        """
+        tab = ttk.Frame(self.nb, padding=10)
 
-        # # 更新数据库
-        # self.mydict[value[0]]=value
+        # 布局1
+        widget_frame = ttk.LabelFrame(
+            master=tab,
+            text='其他设置',
+            padding=10
+        )
+        widget_frame.pack(fill=tk.X, pady=15)
 
-        # 更新新添加的高度
-        self.task_init_y = self.task_init_y + self.task_height + 15
+        ttk.Checkbutton(widget_frame, text='是否允许开机自启', variable=self.auto_run,
+                        command=self.set_auto_run).pack(side=tk.TOP, fill=tk.X, expand=tk.YES, pady=5)
 
-    def add_one(self, value):
-        # 更新数据库
-        self.mydb_dict[value[0]] = value
+        ttk.Checkbutton(widget_frame, text='是否开启磁贴的置顶功能', variable=self.tile_top,
+                        command=self.set_tile_top).pack(side=tk.TOP, fill=tk.X, expand=tk.YES, pady=5)
 
-    def handler_adaptor(self, fun, **kwds):
-        return lambda event, fun=fun, kwds=kwds: fun(event, **kwds)
+        ttk.Checkbutton(widget_frame, text='是否开启磁贴的圆角功能', variable=self.task_radius, onvalue=25, offvalue=0,
+                        command=self.set_task_radius).pack(side=tk.TOP, fill=tk.X, expand=tk.YES, pady=5)
 
-    def task_DoubleClick(self, event, task_tag_name):
-        for value in self.mydb_dict.itervalues():
-            if value[4] == task_tag_name:
-                Newtask_window(
-                    height=180,
-                    pre_window=self.pre_window,
-                    value=value)
-                return 1
-        print("no!" + task_tag_name)
+        ttk.Checkbutton(widget_frame, text='是否打开软件直接进入后台（自动关闭主页）', variable=self.reopen_to_backend,
+                        command=self.set_reopen_to_backend).pack(side=tk.TOP, fill=tk.X, expand=tk.YES, pady=5)
 
-    def del_one(self, value):
-        self.mydb_dict.__delitem__(value)
+        widget_frame3 = ttk.LabelFrame(
+            master=tab,
+            text='Acrylic设置',
+            padding=10
+        )
+        widget_frame3.pack(fill=tk.X, pady=5)
 
-    def refresh_tasks(self):
-        # 画布删除,重新画
-        self.canvas.delete("all")
-        self.task_init_y = 15
-        self.show_all()
+        ttk.Checkbutton(widget_frame3, text='是否开启全透明效果（仅Acrylic）', variable=self.tile_transparent,
+                        command=self.set_tile_transparent).pack(side=tk.TOP, fill=tk.X, expand=tk.YES, pady=5)
 
-    def refresh_(self, task_radius):
-        # 画布删除,重新画
-        self.task_radius = task_radius
-        self.canvas.delete("all")
-        self.task_init_y = 15
-        self.show_all()
+        widget_frame2 = ttk.LabelFrame(
+            master=tab,
+            text='贴边设置',
+            padding=10
+        )
+        widget_frame2.pack(fill=tk.X, pady=15)
 
+        ttk.Checkbutton(widget_frame2, text='是否开启磁贴的自动贴边功能', variable=self.tile_auto_margin,
+                        command=self.set_tile_auto_margin).pack(side=tk.TOP, fill=tk.X, expand=tk.YES, pady=5)
+        ttk.Label(master=widget_frame2, text='贴边边距：').pack(side=tk.LEFT)
+        ttk.Spinbox(master=widget_frame2, values=[i for i in range(20)],
+                    textvariable=self.tile_auto_margin_length).pack(side=tk.LEFT, padx=(5, 0), fill=tk.X, expand=tk.YES,
+                                                                    pady=5)
+        ttk.Button(master=widget_frame2, text='更改', bootstyle='outline', command=self.set_auto_margin_length).pack(
+            side=tk.LEFT, padx=10)
 
-class Newtask_window(object):
-    def __init__(self, height, pre_window, **kwargs):
-        # 传递参数
-        self.pre_window = pre_window
-        self.width, self.height = pre_window.width, height
-        self.tasks = pre_window.tasks
-        self.pre_window_root = pre_window.root
-        self.exe_dir_path = pre_window.exe_dir_path
+        return tab
 
-        # 窗口初始化
-        self.root = tk.Toplevel()
-        self.root.title('新建日程')
-        self.root.iconbitmap("favicon.ico")
-        self.root.wm_attributes('-topmost', 1)
-        # 居中显示
-        win_width = self.root.winfo_screenwidth()
-        win_higth = self.root.winfo_screenheight()
-        width_adjust = (win_width - self.width) / 2
-        higth_adjust = (win_higth - self.height) / 2
-        self.root.geometry("%dx%d-%d-%d" % (self.width, self.height, width_adjust, higth_adjust))
+    def set_tile_transparent(self):
+        """设置全透明"""
+        self.mysetting_dict["tile_transparent"] = [self.tile_transparent.get()]
 
-        # 窗口布局
-        self.main_frame = ttk.Frame(self.root, padding=20)
-        self.main_frame.pack(fill=tk.X)
+        self.tile.modify_transparent(self.tile_transparent.get())
 
-        # 第一行框架
-        entry_spin_frame = ttk.Frame(self.main_frame)
-        entry_spin_frame.pack(fill=tk.X, pady=5)
+    def set_auto_margin_length(self):
+        """设置贴边大小"""
+        self.mysetting_dict["tile_auto_margin_length"] = [self.tile_auto_margin_length.get()]
+
+        self.tile.modify_offset(self.tile_auto_margin_length.get())
+
+    def set_auto_run(self):
+        """是否开启软件自启"""
+        self.mysetting_dict["auto_run"] = [self.auto_run.get()]
+
+        name = 'CountBoard'  # 要添加的项值名称
+        path = str(Path(self.exe_dir_path).joinpath("CountBoard.exe"))  # 要添加的exe路径
+        # KeyName = "SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run"  # 注册表项名
+        # key = win32api.RegOpenKey(win32con.HKEY_LOCAL_MACHINE, KeyName, 0, win32con.KEY_ALL_ACCESS)
+
+        KeyName = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"  # 注册表项名
+        key = win32api.RegOpenKey(win32con.HKEY_CURRENT_USER, KeyName, 0, win32con.KEY_ALL_ACCESS)
+
+        if self.auto_run.get():
+            win32api.RegSetValueEx(key, name, 0, win32con.REG_SZ, path)
+            print('开启软件自启动')
+            print(win32api.RegQueryValueEx(key, name))
+        else:
+            # 偷懒了，不想修改注册表直接删除了事
+            win32api.RegDeleteValue(key, name)
+            print('关闭软件自启动')
+        win32api.RegCloseKey(key)
+
+    # @property
+    # def is_admin(self):
+    #     try:
+    #         return ctypes.windll.shell32.IsUserAnAdmin()
+    #     except:
+    #         return False
+    #
+    # def set_auto_run(self):
+    #     """是否开启软件自启"""
+    #     self.mysetting_dict["auto_run"] = [self.auto_run.get()]
+    #     name = 'CountBoard'  # 要添加的项值名称
+    #     path = str(Path(self.exe_dir_path).joinpath("CountBoard.exe"))  # 要添加的exe路径
+    #     cmd_reg = \
+    #         "reg add HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v %s /t REG_SZ /d %s /f" % (
+    #             name, path)
+    #     cmd_del_reg = \
+    #         "REG DELETE HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v %s" % (
+    #             name)
+    #
+    #     if self.is_admin:
+    #         # 将要运行的代码加到这里
+    #         if self.auto_run.get() == 1:
+    #             os.system(cmd_reg)
+    #             print('开启软件自启动')
+    #         else:
+    #             # 偷懒了，不想修改注册表直接删除了事
+    #             os.system(cmd_del_reg)
+    #             print('关闭软件自启动')
+    #     else:
+    #         # 将要运行的代码加到这里
+    #         if self.auto_run.get() == 1:
+    #             ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd.exe", "/C %s" % cmd_reg, None, 1)
+    #             print('开启软件自启动')
+    #         else:
+    #             # 偷懒了，不想修改注册表直接删除了事
+    #             ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd.exe", "/C %s" % cmd_del_reg, None, 1)
+    #             print('关闭软件自启动')
+
+    def set_tile_auto_margin(self):
+        """是否开启自动贴边"""
+        self.mysetting_dict["tile_auto_margin"] = [self.tile_auto_margin.get()]
+
+        self.tile.modify_auto_margin(self.tile_auto_margin.get())
+
+    def set_tile_top(self):
+        """是否开启磁贴的置顶功能"""
+        self.mysetting_dict["tile_top"] = [self.tile_top.get()]
+
+        if self.tile_top.get() == 1:
+            self.tile.queue.put("set_window_top")
+        else:
+            self.tile.queue.put("cancel_window_top")
+
+    def set_task_radius(self):
+        """是否开启磁贴的圆角功能"""
+        self.mysetting_dict["task_radius"] = [self.task_radius.get()]
+
+        if self.task_radius.get() == 0:
+            self.tile.queue.put("set_task_right_angle")
+        else:
+            self.tile.queue.put("set_task_round_angle")
+
+    def set_reopen_to_backend(self):
+        """是否打开软件直接进入后台"""
+        self.mysetting_dict["reopen_to_backend"] = [self.reopen_to_backend.get()]
+
+    '''-----------------------------------关于页面-----------------------------------------------'''
+
+    @property
+    def create_about_tab(self):
+        """
+        关于页面布局
+        """
+        tab = ttk.Frame(self.nb, padding=10)
+        widget_frame4 = ttk.LabelFrame(
+            master=tab,
+            text='关于软件',
+            padding=10
+        )
+        widget_frame4.pack(fill=tk.X, pady=15)
+
         ttk.Label(
-            master=entry_spin_frame,
-            text='日程名称  '
-        ).pack(side=tk.LEFT, fill=tk.X)
-        self.task_name_entry = ttk.Entry(entry_spin_frame,validate="focus", validatecommand=self.clear)
-        self.task_name_entry.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES)
+            master=widget_frame4,
+            text='CountBoard 是一个基于Tkinter开源的桌面日程倒计时应用。'
+        ).pack(side=tk.TOP, fill=tk.X)
 
-        # 第二行框架
-        timer_frame = ttk.Frame(self.main_frame)
-        timer_frame.pack(fill=tk.X, pady=5)
+        # 分割
+        ttk.Separator(
+            master=widget_frame4,
+            orient=tk.HORIZONTAL
+        ).pack(fill=tk.X, pady=(10, 15))
+
         ttk.Label(
-            master=timer_frame,
-            text='选择时间  '
-        ).pack(side=tk.LEFT, fill=tk.X)
-        self.date_entry = DateEntry(timer_frame)
-        self.date_entry.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES, padx=3)
+            master=widget_frame4,
+            text='主题美化：TTkbootstrap'
+        ).pack(side=tk.TOP, fill=tk.X)
 
-        # 第三行框架
-        ok_frame = ttk.Frame(self.main_frame)
-        ok_frame.pack(fill=tk.X, pady=5)
-        ttk.Button(
-            master=ok_frame,
-            text='确认',
-            bootstyle='outline',
-            command=self.ok,
-        ).pack(side=tk.RIGHT, fill=tk.X, expand=tk.YES, padx=3)
+        ttk.Label(
+            master=widget_frame4,
+            text='当前版本：CountBoard V' + self.version
+        ).pack(side=tk.TOP, fill=tk.X)
 
-        # 其他初始化
-        self.modify_flag = 0
-        self.task_name_entry.insert(0, "创建你的日程吧！")
+        # 分割
+        ttk.Separator(
+            master=widget_frame4,
+            orient=tk.HORIZONTAL
+        ).pack(fill=tk.X, pady=(10, 15))
 
-        # '''***********************************下面区别于new_task**************************************************'''
-        for key in kwargs:
-            if key == "value":
-                # 其他初始化
-                self.modify_flag = 1
-                self.root.title('修改日程')
-                self.value = kwargs["value"]
+        ttk.Label(
+            master=widget_frame4,
+            text='国内仓库：https://gitee.com/gao_yongxian/CountBoard'
+        ).pack(side=tk.TOP, fill=tk.X)
 
-                # 配置参数,初始化
-                self.task_name_entry.delete(0, "end")
-                self.task_name_entry.insert(0, self.value[0])
+        ttk.Label(
+            master=widget_frame4,
+            text='项目地址：https://github.com/Gaoyongxian666/CountBoard'
+        ).pack(side=tk.TOP, fill=tk.X)
 
-                self.date_entry.entry.delete(0, "end")
-                self.date_entry.entry.insert(0, self.value[1])
+        return tab
 
-                self.del_task_button=ttk.Button(
-                    master=ok_frame,
-                    text='删除',
-                    style='danger.Outline.TButton',
-                    command=self.del_task,
-                ).pack(side=tk.LEFT, padx=3)
-        self.root.mainloop()
+    '''-----------------------------------控制页面-----------------------------------------------'''
 
-    def del_task(self):
-        self.tasks.del_one(self.value[0])
-        self.tasks.refresh_tasks()
-        self.root.destroy()
+    @property
+    def create_control_tab(self):
+        """
+        控制页面布局
+        """
+        tab = ttk.Frame(self.nb, padding=10)
 
-    def clear(self):
-        # 点击输入框的回调,删除提示内容
-        if "创建你的日程" in self.task_name_entry.get():
-            self.task_name_entry.delete(0, "end")
+        # 布局1
+        widget_frame = ttk.LabelFrame(
+            master=tab,
+            text='位置大小',
+            padding=10
+        )
+        widget_frame.pack(fill=tk.X, pady=15)
 
-    def ok(self):
-        if self.modify_flag == 1:
-            # 先删除一项,然后再添加一项
-            self.tasks.del_one(self.value[0])
+        self.task_width_scale = ScaleFrame(widget_frame, "日程宽度", 200, 200, 320, self.control_task_width)
+        self.task_height_scale = ScaleFrame(widget_frame, "日程高度", 40, 40, 80, self.control_task_height)
+        self.task_margin_x_scale = ScaleFrame(widget_frame, "左右边距", 1, 1, 20, self.control_task_margin_x)
+        self.task_margin_y_scale = ScaleFrame(widget_frame, "上下边距", 1, 1, 20, self.control_task_margin_y)
 
-        # 点击确认按钮,更新数据库
-        startdate = datetime.today()
-        enddate = datetime.strptime(self.date_entry.entry.get(), '%Y-%m-%d')
-        days = str((enddate - startdate).days)
-        value = [self.task_name_entry.get(),
-                 self.date_entry.entry.get(),
-                 days,
-                 "#080808",
-                 ''.join(random.sample('zyxwvutsrqponmlkjihgfedcba1234567890', 5)),
-                 "white"]
-        print(value)
-        self.tasks.add_one(value)
-        self.tasks.refresh_tasks()
-        self.root.destroy()
+        self.task_height_scale.pack(side=tk.TOP, fill=tk.X, expand=tk.YES, pady=5)
+        self.task_width_scale.pack(side=tk.TOP, fill=tk.X, expand=tk.YES, pady=5)
+        self.task_margin_x_scale.pack(side=tk.TOP, fill=tk.X, expand=tk.YES, pady=5)
+        self.task_margin_y_scale.pack(side=tk.TOP, fill=tk.X, expand=tk.YES, pady=5)
 
+        # 布局2
+        widget_frame2 = ttk.LabelFrame(
+            master=tab,
+            text='字号设置',
+            padding=10
+        )
+        widget_frame2.pack(fill=tk.X, pady=5)
 
-class Ask_del_window(object):
-    def __init__(self, height, pre_window, **kwargs):
-        # 传递参数
-        self.pre_window = pre_window
-        self.pre_window_root = pre_window.root
-        self.width = pre_window.width
-        self.tasks = pre_window.tasks
-        self.height = height
-        self.exe_dir_path = pre_window.exe_dir_path
+        self.title_scale = ScaleFrame(widget_frame2, "标题", 1, 1, 20, self.control_title)
+        self.time_scale = ScaleFrame(widget_frame2, "时间", 1, 1, 20, self.control_time)
+        self.count_scale = ScaleFrame(widget_frame2, "计数", 1, 1, 30, self.control_count)
 
-        # 窗口初始化
-        self.root = tk.Toplevel()
-        self.root.title('删除全部')
-        self.root.iconbitmap("favicon.ico")
-        self.root.wm_attributes('-topmost', 1)
+        self.title_scale.pack(side=tk.TOP, fill=tk.X, expand=tk.YES, pady=5)
+        self.time_scale.pack(side=tk.TOP, fill=tk.X, expand=tk.YES, pady=5)
+        self.count_scale.pack(side=tk.TOP, fill=tk.X, expand=tk.YES, pady=5)
 
-        # 居中显示
-        win_width = self.root.winfo_screenwidth()
-        win_higth = self.root.winfo_screenheight()
-        width_adjust = (win_width - self.width) / 2
-        higth_adjust = (win_higth - self.height) / 2
-        self.root.geometry("%dx%d-%d-%d" % (self.width, self.height, width_adjust, higth_adjust))
+        return tab
 
-        # 布局
-        self.frame_top = Frame(self.root)
-        self.frame_top.pack(side=TOP, padx=20, pady=5, expand=True, fill=X)
-        self.frame_bottom = Frame(self.root)
-        self.frame_bottom.pack(side=BOTTOM, padx=20, expand=True, fill=X)
+    def control_title(self, event):
+        """
+        控制任务的字号
+        """
+        self.mysetting_dict["title_scale"] = [self.title_scale.get_value()]
+        self.tile.tasks.refresh_tasks()
 
-        self.lable = ttk.Label(self.frame_top, text="是否要删除全部?")
-        self.lable.pack(side=tk.LEFT, padx=5, pady=2, expand=True, fill=X)
+    def control_time(self, event):
+        """
+        控制任务的字号
+        """
+        self.mysetting_dict["time_scale"] = [self.time_scale.get_value()]
+        self.tile.tasks.refresh_tasks()
 
-        self.cancel_button = ttk.Button(
-            master=self.frame_bottom,
-            text='取消',
-            bootstyle='outline',
-            command=self.cancel, )
-        self.cancel_button.pack(side=tk.RIGHT, fill=tk.X, expand=tk.YES, padx=3)
+    def control_count(self, event):
+        """
+        控制任务的字号
+        """
+        self.mysetting_dict["count_scale"] = [self.count_scale.get_value()]
+        self.tile.tasks.refresh_tasks()
 
-        self.ok_button = ttk.Button(
-            master=self.frame_bottom,
-            text='确认',
-            bootstyle='outline',
-            command=self.ok, )
-        self.ok_button.pack(side=tk.RIGHT, fill=tk.X, expand=tk.YES, padx=3)
+    def control_task_width(self, event):
+        """
+        控制任务的宽度
+        """
+        self.mysetting_dict["task_geometry"] = \
+            [(self.task_width_scale.get_value(), self.mysetting_dict["task_geometry"][0][1],
+              self.mysetting_dict["task_geometry"][0][2], self.mysetting_dict["task_geometry"][0][3])]
 
-        self.root.mainloop()
+        self.tile.tasks.refresh_tasks()
 
-    def cancel(self):
-        self.root.destroy()
+    def control_task_height(self, event):
+        """
+        控制任务的高度
+        """
+        self.mysetting_dict["task_geometry"] = \
+            [(self.mysetting_dict["task_geometry"][0][0], self.task_height_scale.get_value(),
+              self.mysetting_dict["task_geometry"][0][2], self.mysetting_dict["task_geometry"][0][3])]
 
-    def ok(self):
-        self.tasks.del_all()
-        self.root.destroy()
+        self.tile.tasks.refresh_tasks()
 
+    def control_task_margin_x(self, event):
+        """
+        控制任务的左右边距
+        """
+        self.mysetting_dict["task_geometry"] = \
+            [(self.mysetting_dict["task_geometry"][0][0], self.mysetting_dict["task_geometry"][0][1],
+              self.task_margin_x_scale.get_value(), self.mysetting_dict["task_geometry"][0][3])]
 
-class Setting_window(object):
-    def __init__(self, height, pre_window, **kwargs):
-        self.root = tk.Toplevel()
-        self.root.title('设置')
-        self.root.iconbitmap("favicon.ico")
-        self.exe_dir_path = pre_window.exe_dir_path
+        self.tile.tasks.refresh_tasks()
 
-        self.pre_window = pre_window
-        self.tasks = pre_window.tasks
-        self.pre_window_root = pre_window.root
-        self.width = pre_window.width
-        self.height = height
+    def control_task_margin_y(self, event):
+        """
+        控制任务的上下边距
+        """
+        self.mysetting_dict["task_geometry"] = \
+            [(self.mysetting_dict["task_geometry"][0][0], self.mysetting_dict["task_geometry"][0][1],
+              self.mysetting_dict["task_geometry"][0][2], self.task_margin_y_scale.get_value())]
 
-        # setting 数据库
-        self.mydict = SqliteDict(self.exe_dir_path + '/setting.sqlite', autocommit=True)
-        self.theme_color_str = tk.StringVar()
-        self.mode_combobox_str = tk.StringVar()
-        self.theme_color_str.set(self.mydict["theme"][0])
-        self.mode_combobox_str.set(self.mydict["mode"][0])
-
-        # 获取上一个窗体的坐标
-        self.pre_window_root_x, self.pre_window_root_y, self.pre_window_root_w, self.pre_window_root_h = \
-            self.pre_window_root.winfo_x(), \
-            self.pre_window_root.winfo_y(), \
-            self.pre_window_root.winfo_width(), \
-            self.pre_window_root.winfo_height()
-        self.width_adjust = self.pre_window_root_x
-        self.height_adjust = self.pre_window_root_y + self.pre_window_root_h + 40
-
-        # 右上角显示
-        self.root.geometry("%dx%d+%d+%d" % (self.width, self.height, self.width_adjust, self.height_adjust))
-
-        # 布局
-        self.frame_top = Frame(self.root)
-        self.frame_top.pack(side=TOP, padx=20, pady=10)
-        self.frame_middle = Frame(self.root)
-        self.frame_middle.pack(side=TOP, padx=20, pady=1)
-        self.frame_bottom = Frame(self.root)
-        self.frame_bottom.pack(side=BOTTOM, padx=20, expand=True, fill=X)
-
-        # 背景颜色
-        self.theme_lable = ttk.Label(self.frame_top, text="主题颜色")
-        self.theme_lable.pack(side=tk.LEFT, padx=5, pady=2)
-        self.theme_color_frame = tk.Entry(self.frame_top, width=10, textvariable=self.theme_color_str)  # 10个字符的宽度
-        self.theme_color_frame.pack(side=tk.LEFT)
-        self.theme_color_photo_image = ImageTk.PhotoImage(
-            Image.open(self.exe_dir_path + "/img/" + "颜色.png").resize((15, 15)))
-        self.theme_color_button = tk.Button(self.frame_top,
-                                            command=self.theme_onChoose,
-                                            text="背景颜色",
-                                            image=self.theme_color_photo_image, relief="flat", overrelief="groove")
-        self.theme_color_button.pack(side=tk.LEFT)
-        # 设置颜色块颜色
-        self.theme_color_frame.config(background=self.theme_color_str.get())
-
-        # 设置很长的lable,可以固定左侧
-        tk.Label(self.frame_top, state="disable", width=1000).pack(side=tk.LEFT, expand=True, fill=X)
-
-        # 计时模式
-        self.mode_lable = ttk.Label(self.frame_middle, text="计时模式")
-        self.mode_lable.pack(side=tk.LEFT, padx=5, pady=2)
-        self.mode_combobox = ttk.Combobox(self.frame_middle, width=26, values=["普通模式", "紧迫模式"], state="readonly",
-                                          textvariable=self.mode_combobox_str)
-        self.mode_combobox.pack(side=tk.LEFT, padx=0, pady=2)
-        tk.Label(self.frame_middle, state="disable", width=1000).pack(side=tk.LEFT, expand=True, fill=X)
-
-        # 取消按钮
-        self.cancel_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path + "/img/" + "取消.png").resize((18, 18)))
-        self.cancel_button = tk.Button(self.frame_bottom,
-                                       command=self.cancel,
-                                       image=self.cancel_image,
-                                       relief="flat",
-                                       overrelief="groove")
-        self.cancel_button.pack(side=tk.RIGHT, padx=5, pady=2)
-
-        # 确定按钮
-        self.ok_image = ImageTk.PhotoImage(Image.open(self.exe_dir_path + "/img/" + "确认.png").resize((18, 18)))
-        self.ok_button = tk.Button(self.frame_bottom,
-                                   command=self.ok,
-                                   image=self.ok_image,
-                                   relief="flat",
-                                   overrelief="groove")
-        self.ok_button.pack(side=tk.RIGHT, padx=5, pady=2)
-
-        self.root.mainloop()
-
-    def cancel(self):
-        self.root.destroy()
-
-    def theme_onChoose(self):
-        (rgb, hx) = colorchooser.askcolor()
-        self.theme_color_frame.config(background=hx)
-        self.theme_color_frame.delete(0, 'end')
-        self.theme_color_frame.insert(0, hx)
-
-    def ok(self):
-        # 更新数据库
-        self.mydict["theme"] = [self.theme_color_str.get()]
-        self.mydict["mode"] = [self.mode_combobox_str.get()]
-
-        # 主窗体更新UI
-        self.pre_window.set_theme(bg=self.theme_color_str.get())
-
-        self.root.destroy()
+        self.tile.tasks.refresh_tasks()
 
 
-class Help_window(object):
-    def __init__(self, width, height, path):
-        # 传递参数
-        self.path = path
-        self.width, self.height = width, height
+def just_one_instance(func):
+    """
+    保证只能运行一个Python实例，方法是程序运行时监听一个特定端口，如果失败则说明已经有实例在跑。
+    """
 
-        # 窗口初始化
-        self.root = tk.Toplevel()
-        self.root.title('使用说明')
-        self.root.iconbitmap("favicon.ico")
-        self.root.wm_attributes('-topmost', 1)
+    @functools.wraps(func)
+    def f(*args, **kwargs):
+        import socket
+        try:
+            # 全局属性，否则变量会在方法退出后被销毁
+            global s
+            s = socket.socket()
+            host = socket.gethostname()
+            s.bind((host, 60123))
+        except:
 
-        # 居中显示
-        win_width = self.root.winfo_screenwidth()
-        win_higth = self.root.winfo_screenheight()
-        width_adjust = (win_width - self.width) / 2
-        higth_adjust = (win_higth - self.height) / 2
-        self.root.geometry("%dx%d+%d+%d" % (self.width, self.height, width_adjust, higth_adjust))
+            print('程序已经在运行了')
 
-        # 窗口布局
-        self.frame_bottom = ttk.Frame(self.root)
-        self.frame_bottom.pack(side=tk.BOTTOM, fill=BOTH, expand=False)
-        self.frame_top = ttk.Frame(self.root, padding=20)
-        self.frame_top.pack(side=tk.TOP, fill=BOTH, expand=True)
+            return None
+        return func(*args, **kwargs)
 
-        self.HtmlView = TkHtmlView(self.frame_top, background="white")
-        self.HtmlView.pack(fill='both', expand=True)
+    return f
 
-        self.filename = tk.StringVar()
-        ttk.Entry(self.frame_bottom, textvariable=self.filename).pack(side=tk.LEFT, padx=20, pady=10, fill='x',
-                                                                      expand=True)
-        ttk.Button(self.frame_bottom, text='选择文件', command=self.open_file).pack(side=tk.LEFT, padx=20, pady=10)
 
-        # 加载默认md文件
-        self.p = Thread(target=self.init_file)
-        self.p.start()
+@just_one_instance
+def main():
+    # pathlib可以根据平台自动转换斜杠，不过返回的不是str，还需要转化
+    # exe_dir_path=str(Path(sys.argv[0]).parent)
 
-        self.root.mainloop()
+    exe_dir_path = os.path.dirname(sys.argv[0])
+    print(exe_dir_path)
 
-    def init_file(self):
-        with open(self.path, encoding='utf-8') as f:
-            self.filename.set(self.path)
-            md2html = Markdown()
-            html = md2html.convert(f.read())
-            self.HtmlView.set_html(html)
+    os.environ['REQUESTS_CA_BUNDLE'] = os.path.join(exe_dir_path, 'cacert.pem')
+    print(os.environ['REQUESTS_CA_BUNDLE'] )
 
-    def open_file(self):
-        path = askopenfilename()
-        if not path:
-            return
-        with open(path, encoding='utf-8') as f:
-            self.filename.set(path)
-            md2html = Markdown()
-            html = md2html.convert(f.read())
-            print(html)
-            self.HtmlView.set_html(html)
+    # 创建logs文件夹
+    if not os.path.exists(exe_dir_path + r"/logs/"):
+        os.mkdir(exe_dir_path + r"/logs/")
+
+    logger = logging.getLogger()  # 开启日志记录:创建一个logger
+    logger.setLevel(logging.INFO)  # Log等级总开关
+    formatter = logging.Formatter("%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s")  # 日志格式
+    # 创建一个handler，用于写入日志文件
+    fh = logging.FileHandler(
+        exe_dir_path + '/logs/' + time.strftime('%Y%m%d%H%M', time.localtime(time.time())) + '.log', mode='w',encoding="utf8")
+    fh.setLevel(logging.INFO)  # 输出到file的log等级的开关
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+    # 创建一个handler，用于写入控制台
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)  # 输出到console的log等级的开关
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+
+    # 打开主窗口
+    try:
+        MainWindow(
+            title="CountBoard",
+            icon=str(Path(exe_dir_path).joinpath("favicon.ico")),
+            topmost=1,
+            width=499,
+            height=466,
+            version="1.2",
+            logger=logger,
+            exe_dir_path=exe_dir_path)
+    except:
+        logger.error(traceback.format_exc())
 
 
 if __name__ == "__main__":
-    exe_dir_path = os.path.dirname(sys.argv[0])
-    print(exe_dir_path)
-    if not os.path.exists(exe_dir_path + "/setting.sqlite"):
-        print("第一次运行")
-        mydict = SqliteDict(exe_dir_path + '/setting.sqlite')
-        mydict["theme"] = ["white"]
-        mydict["mode"] = ["普通模式"]
-        mydict.commit()
-        mydict.close()
-
-    bg = SqliteDict(exe_dir_path + '/setting.sqlite').__getitem__("theme")[0]
-    countboard = CountBoard(title="CountBoard",
-                            icon="favicon.ico",
-                            alpha=0.9,
-                            topmost=0,
-                            bg="#000000",
-                            width=300,
-                            height=190,
-                            width_adjust=20,
-                            higth_adjust=20)
+    main()
 
 # -w不带控制行
-# 用户名带空格--用引号C:\Users\Gao yongxian\PycharmProjects\CountBoard
-# pyinstaller -F -i "C:\Users\Gao yongxian\PycharmProjects\CountBoard\favicon.ico" "C:\Users\Gao yongxian\PycharmProjects\CountBoard\Main_window.py" -w
+# 用户名带空格-->用引号 C:\Users\Gao yongxian\PycharmProjects\CountBoard
+# pyinstaller -F -i "C:\Users\Gao yongxian\PycharmProjects\CountBoard\favicon.ico" "C:\Users\Gao yongxian\PycharmProjects\CountBoard\CountBoard.py" -w
+# pyinstaller -F -i "C:\Users\Gao yongxian\PycharmProjects\CountBoard\favicon.ico" "C:\Users\Gao yongxian\PycharmProjects\CountBoard\CountBoard.py"

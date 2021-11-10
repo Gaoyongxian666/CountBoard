@@ -1,5 +1,3 @@
-# coding:utf-8
-
 from ctypes import POINTER, Structure, c_int
 from ctypes.wintypes import DWORD, HWND, ULONG, POINT, RECT, UINT
 from enum import Enum

@@ -2,7 +2,7 @@ import win32api, win32con, win32gui_struct, win32gui
 import os
 
 class SysTrayIcon(object):
-    '''SysTrayIcon类用于显示任务栏图标'''
+    """SysTrayIcon类用于显示任务栏图标"""
     QUIT = 'QUIT'
     SPECIAL_ACTIONS = [QUIT]
     FIRST_ID = 5320
