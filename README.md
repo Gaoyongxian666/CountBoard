@@ -22,7 +22,7 @@ CountBoard 是一个基于Tkinter开源的桌面日程倒计时应用。
    
 ## 预览图
 
-![预览图](https://pic.imgdb.cn/item/61a876ae2ab3f51d91841854.png) 
+![预览图](https://pic.imgdb.cn/item/61a889432ab3f51d9190ca1b.pngg) 
 
 ![预览图](https://pic.imgdb.cn/item/61a876552ab3f51d9183e286.png)  
 
