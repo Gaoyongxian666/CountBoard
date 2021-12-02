@@ -19,14 +19,22 @@ from Tile import *
 from CustomWindow import CustomWindow
 import ttkbootstrap as ttk
 from ttkbootstrap.style import utility
+
+
 # from tzlocal import get_localzone
 
 
 class MainWindow(CustomWindow):
     """主窗体模块"""
 
-    def __init__(self, version, icon, logger, exe_dir_path, *args, **kwargs):
+    def __init__(self, version, icon, logger, exe_dir_path, first_dict, *args, **kwargs):
         self.root = tk.Tk()
+
+        self.first_dict = first_dict
+        if first_dict["scaling_flag"][0]:
+            self.root.tk.call('tk', 'scaling', first_dict["scaling"][0] / 100)
+        logger.info("默认窗口缩放:" + str(self.root.tk.call('tk', 'scaling')))
+
         self.style = ttk.Style()
         super().__init__(*args, **kwargs)
 
@@ -66,7 +74,7 @@ class MainWindow(CustomWindow):
         self.icon = icon
 
         # 设置主题
-        utility.enable_high_dpi_awareness()
+        # utility.enable_high_dpi_awareness()
 
         # 变量初始化（在耗时线程中赋值）
         self.theme_name = tk.StringVar()
@@ -78,6 +86,8 @@ class MainWindow(CustomWindow):
         self.task_radius = tk.IntVar()
         self.auto_run = tk.IntVar()
         self.tile_auto_margin = tk.IntVar()
+        self.scaling_flag = tk.IntVar()
+        self.scaling = tk.IntVar()
         self.tile_transparent = tk.IntVar()
         self.tile_auto_margin_length = tk.IntVar()
         self.regular_notify_flag = tk.IntVar()
@@ -227,6 +237,13 @@ class MainWindow(CustomWindow):
             # 设置主题
             self.style.theme_use(self.theme_name.get())
 
+        elif content == "set_scaling":
+            # 自定义缩放：此选项只能设置之后的缩放，已经绘制的控件无法更改
+            # ScaleFactor = ctypes.windll.shcore.GetScaleFactorForDevice(0)
+            # root.tk.call('tk', 'scaling', ScaleFactor / 75)
+            self.scaling = self.root.tk.call('tk', 'scaling', 3)
+            # print("scaling")
+
         elif content == "set_regular_notify":
             # 设置主题
             if self.regular_notify_flag.get():
@@ -268,6 +285,8 @@ class MainWindow(CustomWindow):
     def initialization(self):
         """执行耗时操作,例如从数据库读取数据(先布局—_init2__设变量，然后在此线程中动态赋值)"""
         # self.main_window_queue.put("show_wait_window")
+
+        # self.main_window_queue.put("set_scaling")
 
         # 判断是否第一次运行(执行恢复默认操作)
         if not os.path.exists(self.exe_dir_path + "/my_setting.sqlite"):
@@ -332,6 +351,9 @@ class MainWindow(CustomWindow):
         self.interval_notify_title.set(self.interval_notify["title"])
         self.interval_notify_content.set(self.interval_notify["content"])
 
+        self.scaling_flag.set(self.first_dict["scaling_flag"][0])
+        self.scaling.set(self.first_dict["scaling"][0])
+
         # self.main_window_queue.put("set_theme")
         # self.queue.put("change_theme")  # 解决因主题改变导致resize控件样式改变
 
@@ -383,7 +405,7 @@ class MainWindow(CustomWindow):
         """后台图标线程"""
         with SqliteDict(self.exe_dir_path + '/my_setting.sqlite') as mydict:  # re-open the same DB
             try:
-                taskbar_icon=mydict["taskbar_icon"][0]
+                taskbar_icon = mydict["taskbar_icon"][0]
             except:
                 self.logger.info(traceback.format_exc())
                 taskbar_icon = 1
@@ -529,6 +551,29 @@ class MainWindow(CustomWindow):
         themes_cbo.pack(fill=tk.X, pady=5)
         themes_cbo.bind("<<ComboboxSelected>>", self.change_theme)
 
+        # 布局17
+        widget_frame17 = ttk.LabelFrame(
+            master=rframe,
+            text='组件缩放',
+            padding=10
+        )
+        widget_frame17.pack(fill=tk.X, pady=8)
+
+        ttk.Checkbutton(widget_frame17, text='是否开启组件缩放（通常不开启）',
+                        variable=self.scaling_flag,
+                        bootstyle="square-toggle",
+                        command=self.set_scaling_flag).pack(side=tk.TOP, fill=tk.X, expand=tk.YES, pady=5)
+        ttk.Label(master=widget_frame17, text='针对2K，4K高分辨率屏幕，需要重启生效').pack(side=tk.TOP, fill=tk.X, expand=tk.YES,
+                                                                           pady=5)
+
+        ttk.Label(master=widget_frame17, text='缩放大小：').pack(side=tk.LEFT)
+        ttk.Spinbox(master=widget_frame17, values=[i for i in range(100, 300)], width=3,
+                    textvariable=self.scaling).pack(side=tk.LEFT, padx=(5, 0),
+                                                    # fill=tk.X, expand=tk.YES,
+                                                    pady=5)
+        ttk.Button(master=widget_frame17, text='更改', bootstyle='outline', command=self.set_scaling).pack(
+            side=tk.LEFT, padx=10)
+
         # 布局11
         widget_frame11 = ttk.LabelFrame(
             master=lframe,
@@ -636,6 +681,12 @@ class MainWindow(CustomWindow):
             bootstyle='outline',
             command=self.github__)
         b6.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES, padx=(0, 5))
+
+    def set_scaling_flag(self):
+        self.first_dict["scaling_flag"] = [self.scaling_flag.get()]
+
+    def set_scaling(self):
+        self.first_dict["scaling"] = [self.scaling.get()]
 
     def change_win_mode(self, event):
         """修改磁贴的模式"""
@@ -1215,6 +1266,7 @@ def my_logs(exe_dir_path):
     return logger
 
 
+
 @just_one_instance
 def main():
     # pathlib可以根据平台自动转换斜杠，不过返回的不是str，还需要转化
@@ -1229,26 +1281,42 @@ def main():
     logger = my_logs(exe_dir_path)
     logger.info(exe_dir_path)
 
+    # 获取屏幕信息
+    screen_info = win32api.GetMonitorInfo(win32api.MonitorFromPoint((0, 0)))
+    logger.info(str(screen_info))
+
     # 获取时区
     # local_tz = get_localzone()
     # logger.info(local_tz)
+
+    # 需要在创建窗口之前读取的数据
+    if not os.path.exists(exe_dir_path + "/first.sqlite"):
+        logger.info("第一次运行")
+        first_dict = SqliteDict(exe_dir_path + '/first.sqlite', autocommit=True)
+        first_dict["scaling_flag"] = [0]
+        first_dict["scaling"] = [133]
+    else:
+        first_dict = SqliteDict(exe_dir_path + '/first.sqlite', autocommit=True)
+        logger.info([(x, i) for x, i in first_dict.items()])
 
     try:
         MainWindow(
             title="CountBoard",
             icon=str(Path(exe_dir_path).joinpath("favicon.ico")),
             topmost=1,
-            width=550,
-            height=600,
+            width=screen_info.get("Monitor")[2] * 1 / 2,
+            height=screen_info.get("Monitor")[3] * 4 / 5,
             version="1.3",
             logger=logger,
             exe_dir_path=exe_dir_path,
-            show=0)
+            show=0,
+            first_dict=first_dict)
     except:
         logger.error(traceback.format_exc())
 
 
 if __name__ == "__main__":
+    utility.enable_high_dpi_awareness()
     main()
 
 # -w不带控制行

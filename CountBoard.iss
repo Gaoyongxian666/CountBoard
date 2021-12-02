@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "CountBoard"
-#define MyAppVersion "1.3.0.1"
+#define MyAppVersion "1.3.0.2"
 #define MyAppPublisher "Gaoyongxian"
 #define MyAppURL "https://github.com/Gaoyongxian666/CountBoard"
 #define MyAppExeName "CountBoard.exe"

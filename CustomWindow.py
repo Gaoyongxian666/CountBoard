@@ -137,8 +137,8 @@ class CustomWindow():
         """
         if position == "center":
             # 中心位置,要传入宽高
-            width_adjust = (self.win_width - self.width) / 2
-            higth_adjust = (self.win_heigth - self.height) / 2
+            width_adjust = (self.work_width - self.width) / 2
+            higth_adjust = (self.work_heigh - self.height) / 2
             self.root.geometry("%dx%d+%d+%d" % (self.width, self.height, width_adjust, higth_adjust))
         elif position == "follow":
             # 跟随位置,要传入高
