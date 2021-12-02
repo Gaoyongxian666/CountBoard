@@ -10,3 +10,4 @@ pack
 .venv
 logs
 pack32
+*.txt

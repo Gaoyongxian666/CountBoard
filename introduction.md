@@ -2,37 +2,29 @@ CountBoard 是一个基于Tkinter开源的桌面日程倒计时应用。
 
 ## 基本功能 
 
-* 修改功能  
-    * 双击日程可修改或者删除。  
-* 计时模式
-   * 普通模式指24小时以内算做一天。    
-   * 紧迫模式指24小时以内算做零天。
 * 磁贴主题
-   * Acrylic(亚克力效果)。    
-   * Aero(毛玻璃效果)。
-* 控制大小
-   * 磁贴的右下角来控制大小。    
-
-## 主题美化 
-* [ttkbootstrap](https://github.com/israel-dryer/ttkbootstrap)
-
-## 项目地址 
-* [Gitee](https://gitee.com/gao_yongxian/CountBoard)
-* [Github](https://github.com/Gaoyongxian666/CountBoard)
-
-## 反馈建议
-* [吾爱破解](https://www.52pojie.cn/thread-1529077-1-1.html)
-* [小众软件](https://meta.appinn.net/t/topic/27272/33)
-
+   * Acrylic：亚克力效果。    
+   * Aero：毛玻璃效果。
+* 修改功能  
+    * 双击日程可修改或者删除。
+    * 右键可以新建，删除，修改。
+* 提醒功能  
+    * 定时提醒：每天固定时间进行提醒。
+    * 间隔提醒：每隔多少时间进行提醒。
+* 计时模式
+   * 普通模式：24小时以内算做一天。    
+   * 紧迫模式：24小时以内算做零天。
+* 磁贴主题
+   * 嵌入桌面：绑定到桌面。    
+   * 独立窗体：独立的窗体，可以设置置顶等。    
+   
 
 ## 更新日志
+* V1.3
+   * 2021-11-30：修改bug，增加桌面模式，提醒功能，优化代码等
 * V1.2
    * 2021-11-10：增加自动调整大小，自动贴边，开机自启等功能
 * V1.1
    * 2021-11-04：修改外观，实现了亚克力效果和磨玻璃效果
 * V1.0
    * 2021-10-16：完成基本功能
-
-## 贡献者(欢迎PR)
-* [rtrobin](https://github.com/rtrobin)
-   * Use cx-freeze package to freeze application.

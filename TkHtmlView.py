@@ -3,6 +3,8 @@ tkinter HTML text widgets
 """
 import sys
 import tkinter as tk
+
+import ttkbootstrap
 from tkhtmlview import html_parser
 
 VERSION = "0.1.0.post1"
@@ -13,7 +15,7 @@ class _ScrolledText(tk.Text):
     def __init__(self, master=None, **kw):
         self.frame = tk.Frame(master)
 
-        self.vbar = tk.Scrollbar(self.frame)
+        self.vbar = ttkbootstrap.Scrollbar(self.frame, bootstyle='round')
         kw.update({'yscrollcommand': self.vbar.set})
         self.vbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.vbar['command'] = self.yview

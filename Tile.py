@@ -7,6 +7,7 @@
 @contact: g1695698547@163.com
 """
 import json
+import queue
 import random
 import tkinter as tk
 import traceback
@@ -16,78 +17,98 @@ from pathlib import Path
 from queue import Queue
 from threading import Thread
 from tkinter import *
-from tkinter import ttk
+import ttkbootstrap as ttk
 from tkinter.filedialog import askopenfilename
 import pywintypes
 import requests
+import win32gui
 from markdown2 import Markdown
 from CustomWindow import CustomWindow
 from TkHtmlView import TkHtmlView
-from ttkbootstrap.widgets.calendar import DateEntry
+from ttkbootstrap.widgets.date_entry import DateEntry
 from WindowEffect import WindowEffect
 
 
 class Tile(CustomWindow):
     """磁贴窗口"""
 
-    def __init__(self, bg, exe_dir_path, mydb_dict, mysetting_dict, logger, *args, **kwargs):
+    def __init__(self, bg, exe_dir_path, mydb_dict, mysetting_dict, tile_queue, logger, *args, **kwargs):
         self.root = tk.Toplevel()
         super().__init__(*args, **kwargs)
 
-        # 传参
-        self.logger = logger
-        self.bg = bg
-        self.exe_dir_path = exe_dir_path
-        self.mydb_dict = mydb_dict
-        self.mysetting_dict = mysetting_dict
-
         # 布局初始化
-        self.__init__2()
+        self.__init__2(bg, exe_dir_path, mydb_dict, mysetting_dict, tile_queue, logger, *args, **kwargs)
 
         # 开启更新UI队列
-        self.queue = Queue()  # 子线程与主线程的队列作为中继
-        self.root.after(1000, self.relay)
+        self.root.after(1, self.relay)
 
         # 开启耗时操作线程
         self.initialization_thread = Thread(target=self.initialization)
         self.initialization_thread.setDaemon(True)
         self.initialization_thread.start()
 
-    def __init__2(self):
+        self.root.mainloop()
+
+    def __init__2(self, bg, exe_dir_path, mydb_dict, mysetting_dict, tile_queue, logger, *args, **kwargs):
         """
         布局初始化(必须在主线程进行的操作，比如设置主题，窗口布局，变量初始化)
         """
+        # 传参
+        self.logger = logger
+        self.bg = bg
+        self.exe_dir_path = exe_dir_path
+        self.mydb_dict = mydb_dict
+        self.mysetting_dict = mysetting_dict
+        self.tile_queue = tile_queue  # 子线程与主线程的队列作为中继
         # 布局
         self.frame_top = Frame(self.root, bg=self.bg)
+        # self.frame_top.configure(highlightbackground="#202020")
+        # self.frame_top.configure(highlightthickness=1)
         self.frame_top.pack(side=TOP, fill="both", expand=True)
         # 画布
         self.canvas = Canvas(self.frame_top)
-        self.canvas.config(highlightthickness=0)
+        self.canvas.config(highlightthickness=1)
+        self.canvas.configure(highlightbackground="#000000")
         self.canvas.pack(side=tk.LEFT, fill="both", expand=True)
         # 事件
         self.canvas.bind('<ButtonPress-1>', self._on_tap)
         self.canvas.bind('<ButtonRelease-1>', self._on_release)
         self.canvas.bind('<B1-Motion>', self._on_move)
+        self.canvas.bind("<Button-3>", self._on_right_menu)  # 绑定右键鼠标事件
+        self.menubar = Menu(self.canvas, tearoff=False)  # 创建一个菜单
 
-        # 获取句柄的两种方式
+        # 窗口特效
         self.hwnd = pywintypes.HANDLE(int(self.root.frame(), 16))
         self.window_effect = WindowEffect()
 
-        # 数据库读取数据
-        self.tile_theme_name = self.mysetting_dict['tile_theme_name'][0]
-        self.task_radius = self.mysetting_dict['task_radius'][0]
-        self.task_geometry = self.mysetting_dict['task_geometry'][0]
-        self.tile_top = self.mysetting_dict['tile_top'][0]
-        self.tile_transparent = self.mysetting_dict['tile_transparent'][0]
+        # 保存单个日程的tag
+        self.tag_name = tk.StringVar()
+        # 父窗口句柄
+        self.hhwnd = 0
 
-        # 设置主题
-        self.set_theme(tile_theme_name=self.tile_theme_name, remove_=False)
-        self.set_background(bg=self.bg)
-        self.set_task_radius(self.task_radius, refresh_=False)
-        self.set_top(self.tile_top)
+    def _on_right_menu(self, event):
+        self.tile_queue.put(("right_menu", (event.x_root, event.y_root)))
 
-        # 任务列表初始化
-        self.tasks = Tasks(pre_window=self)
+    def right_menu(self, content):
+        event_x_root = content[0]
+        event_y_root = content[1]
+        self.menubar.delete(0, END)
+        self.menubar.add_command(label='新建日程', command=self.open_new_winodw)
+        if self.tag_name.get() != "":
+            self.menubar.add_command(label='编辑日程', command=self.open_edit_winodw)
+            self.menubar.add_command(label='删除日程', command=self.open_del_winodw)
+        self.menubar.post(event_x_root, event_y_root)
+
+    def open_new_winodw(self):
+        """打开新窗口"""
+        self.tile_queue.put("NewTaskWindow")
+
+    def open_edit_winodw(self):
+        """打开编辑窗口"""
+        self.tile_queue.put("EidtTaskWindow")
+
+    def open_del_winodw(self):
+        self.tile_queue.put("DelTaskWindow")
 
     def modify_transparent(self, tile_transparent):
         """修改透明度"""
@@ -101,37 +122,146 @@ class Tile(CustomWindow):
     '''-----------------------------------更新UI 线程-----------------------------------------------'''
 
     def relay(self):
-        """
-        更新主线程UI
-        """
-        while not self.queue.empty():
-            content = self.queue.get()
-            self.logger.info(content)
-            if content == "update_theme_Acrylic":
-                self.set_theme("Acrylic")
-            elif content == "update_theme_Aero":
-                self.set_theme("Aero")
-            elif content == "set_task_right_angle":
-                self.set_task_radius(0)
-            elif content == "set_task_round_angle":
-                self.set_task_radius(25)
-            elif content == "set_window_top":
-                self.set_top(1)
-            elif content == "cancel_window_top":
-                self.set_top(0)
-            elif content == "refresh_tasks":
-                self.tasks.refresh_tasks()
-            elif content == "show_all_tasks":
-                self.tasks.show_all()
+        """更新UI队列"""
+        try:
+            # 队列不可阻塞
+            content = self.tile_queue.get(False)
+            self.logger.info(self.__class__.__name__ + " --Queue接收到消息:" + str(content))
+            # 回调函数要在之前回调,因为如果在队列中打开窗体,窗体的 mailoop 会让函数卡死,死循环.
+            self.root.after(1, self.relay)
+            # 具体的更新Ui操作
+            self.UpdateUI(content)
+        except queue.Empty:
+            self.root.after(200, self.relay)
 
-        self.root.after(100, self.relay)
+    def UpdateUI(self, content):
+        if content == "update_theme_Acrylic":
+            self.set_theme("Acrylic")
+        elif content == "update_theme_Aero":
+            self.set_theme("Aero")
+        elif content == "set_task_right_angle":
+            self.set_task_radius(0)
+        elif content == "set_task_round_angle":
+            self.set_task_radius(25)
+        elif content == "set_window_top":
+            self.set_top(1)
+        elif content == "cancel_window_top":
+            self.set_top(0)
+        elif content == "refresh_tasks":
+            self.tasks.refresh_tasks()
+        elif content == "show_all_tasks":
+            self.tasks.show_all()
+        elif content == "del_all":
+            self.tasks.del_all()
+
+        elif content == "NewTaskWindow":
+            # 打开新建日程
+            NewTaskWindow(title="新建日程", height=180, tile_queue=self.tile_queue)
+
+        elif content == "exit":
+            self.exit()
+
+        elif content == "update_sqlite":
+            self.tasks.update_sqlite_time()
+
+        elif content == "set_tag_name_":
+            self.tag_name.set("")
+
+        elif content == "set_data":
+            # 获取边框颜色
+            self.windows_border_color = "#" + str(hex(self.windows_border))[-1] * 6
+            self.canvas.config(highlightbackground=self.windows_border_color)
+            self.tasks_border_color = "#" + str(hex(self.tasks_border))[-1] * 6
+            # 设置主题
+            self.set_theme(tile_theme_name=self.tile_theme_name, remove_=False)
+            self.set_background(bg=self.bg)
+            self.set_task_radius(self.task_radius, refresh_=False)
+            self.set_top(self.tile_top)
+            self.update_win_mode(self.win_mode)
+            # 任务列表初始化
+            self.tasks = Tasks(tile_queue=self.tile_queue, pre_window=self)
+
+        elif content == "set_background":
+            self.set_background(bg=self.bg)
+
+        elif content == "EidtTaskWindow":
+            for value in self.mydb_dict.itervalues():
+                if value[4] == self.tag_name.get():
+                    NewTaskWindow(
+                        title="修改日程",
+                        height=180,
+                        tile_queue=self.tile_queue,
+                        value=value)
+                    return 1
+            print("no!" + self.tag_name.get())
+            self.tag_name.set("")
+
+        elif content == "DelTaskWindow":
+            for value in self.mydb_dict.itervalues():
+                if value[4] == self.tag_name.get():
+                    self.tasks.del_one(value[0])
+                    self.tile_queue.put("refresh_tasks")
+                    self.tag_name.set("")
+
+        elif type(content) == tuple:
+            if content[0] == "del_one":
+                self.tasks.del_one(content[1])
+            elif content[0] == "add_one":
+                self.tasks.add_one(content[1])
+            elif content[0] == "modify_offset":
+                self.modify_offset(content[1])
+            elif content[0] == "modify_auto_margin":
+                self.modify_auto_margin(content[1])
+            elif content[0] == "modify_transparent":
+                self.modify_transparent(content[1])
+            elif content[0] == "update_win_mode":
+                self.update_win_mode(content[1])
+            elif content[0] == "right_menu":
+                self.right_menu(content[1])
+            elif content[0] == "set_tag_name":
+                self.tag_name.set(content[1])
+
+    def update_win_mode(self, win_mode):
+        # 实现代码很简单
+        # 关于嵌入桌面的笔记：
+        # 1.使用工具winspy（网上自行下载）查看窗口句柄
+        # 2.SHELLDLL_DefView是你的桌面窗口类名，它的子窗口是图标窗口，但是默认情况它是在“Progman”窗口下。
+        # 3.一旦你点击右下角的桌面按钮，或者使用Win+Tab， Win+D快捷键，你会发现桌面窗口跑到了“WorkerW”窗口下。
+        # 4.经过测试发现SHELLDLL_DefView很灵活，如果你把自己的窗口设置为Progman的子窗口，那么SHELLDLL_DefView会自动设置顶层窗口，
+        # 自己成为自己的主窗口。而你一旦进行桌面操作，它就自动跑到“WorkerW”窗口下。
+        # 5.发现如果设置Progman的子窗口，并不能显示在桌面，只有在“WorkerW”窗口下才可以。
+        # 6.另外“WorkerW”窗口默认是没有激活的，只有进行桌面相关操作才会激活（向桌面发送 0x052c）
+        # 7.最后发现想要嵌入桌面，一种简单的做法就是直接把你的窗体的父窗口设置成“WorkerW”窗口
+
+        # 网上的blog：
+        # 默认的桌面窗口是“SHELLDLL_DefView”，在“Progman”窗口下，你写个程序检测，会发现，点击显示桌面后，这时，激活任意程序窗口，这个特殊状态就消失了，桌面又回到了“Progman”窗口下。
+        # 其实系统的显示桌面功能，并不是将桌面上的所有应用程序窗口隐藏或最小化，而是一个特殊的状态，“WorkerW”默认是隐藏，当要显示桌面时，会被显示出来，并且窗口Z次序跑到顶层，
+        # 然后将“SHELLDLL_DefView”桌面的父窗口由“Progman”改为“WorkerW”，这时的应用程序可能也是在某种特殊状态下。所以你用IsWindowVisble、IsIconic等函数是检测不出来的，除非点了显示桌面后，又激活了任意某个窗口。
+        # 1. 使用win32api.EnumWindows()枚举窗口；
+        # 2. 先找到"SHELLDLL_DefView"窗口的父窗口；
+        # 3. 再找到该窗口的下一层窗口“WorkerW”;
+        # 4. 将我们的窗口设为该“WorkerW”窗口的子窗口即可。
+
+        if win_mode == "独立窗体":
+            win32gui.SetParent(self.hwnd, 0)
+        else:
+            pWnd = win32gui.FindWindow("Progman", "Program Manager")
+            win32gui.SendMessage(pWnd, 0x052c, 0, 0)
+            win32gui.EnumWindows(self.get_workw_hwnd, 0)
+            win32gui.SetParent(self.hwnd, self.hhwnd)
+
+    def get_workw_hwnd(self, hwnd, lParam):
+        """遍历找到workw"""
+        if win32gui.IsWindowVisible(hwnd):
+            hNextWin = win32gui.FindWindowEx(hwnd, None, "SHELLDLL_DefView", None)
+            if hNextWin:
+                self.hhwnd = hwnd
 
     def set_theme(self, tile_theme_name, remove_=True):
         """
         更新主题：remove_是否先去除效果
         """
         self.tile_theme_name = tile_theme_name
-
         if remove_:
             self.window_effect.removeBackgroundEffect(self.hwnd)
         if tile_theme_name == "Acrylic":
@@ -149,12 +279,19 @@ class Tile(CustomWindow):
             self.tasks.refresh_tasks()
 
     def set_background(self, bg):
-        """
-        设置背景
-        """
+        """设置背景"""
         self.root.configure(bg=bg)
         self.frame_top.configure(bg=bg)
         self.canvas.configure(bg=bg)
+        self.canvas.config(highlightbackground=self.windows_border_color)
+
+    def random_color(self):
+        """随机颜色"""
+        colors1 = '0123456789ABCDEF'
+        num = "#"
+        for i in range(6):
+            num += random.choice(colors1)
+        return num
 
     def set_top(self, flag):
         """
@@ -171,7 +308,19 @@ class Tile(CustomWindow):
         """
         执行耗时操作（先在布局初始化中设置变量，然后此线程中动态修改）
         """
-        self.queue.put("show_all_tasks")
+        # 数据库读取数据
+        self.tile_theme_name = self.mysetting_dict['tile_theme_name'][0]
+        self.task_radius = self.mysetting_dict['task_radius'][0]
+        self.task_geometry = self.mysetting_dict['task_geometry'][0]
+        self.tile_top = self.mysetting_dict['tile_top'][0]
+        self.tile_transparent = self.mysetting_dict['tile_transparent'][0]
+        self.tasks_border = self.mysetting_dict['tasks_border'][0]
+        self.windows_border = self.mysetting_dict['windows_border'][0]
+        self.win_mode = self.mysetting_dict["win_mode"][0]
+        # 数据初始化
+        self.tile_queue.put("set_data")
+        # 展示所以数据
+        self.tile_queue.put("show_all_tasks")
 
     '''-----------------------------------重写父类方法-----------------------------------------------'''
 
@@ -189,26 +338,25 @@ class Tile(CustomWindow):
 
 
 class Tasks:
-    """
-    任务列表
-    """
+    """任务列表"""
 
-    def __init__(self, pre_window, **kwargs):
+    def __init__(self, tile_queue, pre_window, **kwargs):
 
         # 传参
         self.pre_window = pre_window
-
+        self.tile_queue = tile_queue
         # 数据初始化
         self.pre_window_root = pre_window.root
         self.exe_dir_path = pre_window.exe_dir_path
         self.canvas = pre_window.canvas
         self.mydb_dict = pre_window.mydb_dict
         self.mysetting_dict = pre_window.mysetting_dict
+        self.tasks_border_color = pre_window.tasks_border_color
 
         # 更新时间
-        self.__init_update_time()
+        self.update_sqlite_time()
 
-    def __init_update_time(self):
+    def update_sqlite_time(self):
         # 初始化更新时间
         from datetime import datetime
         for key, value in self.mydb_dict.iteritems():
@@ -243,9 +391,11 @@ class Tasks:
                   x1, y1 + radius,
                   x1, y1 + radius,
                   x1, y1]
-        self.canvas.create_polygon(points, **kwargs, smooth=True, width=1, outline="#080808")
+        # self.canvas.create_polygon(points, **kwargs, smooth=True, width=1, outline="#080808")
+        self.canvas.create_polygon(points, **kwargs, smooth=True, width=1, outline=self.tasks_border_color)
 
     def __handler(self, fun, **kwds):
+        # 实际上是可以直接 lambda： button.bind("<Button-1>", lambda e: handler(e, a=1, b=2, c=3))
         return lambda event, fun=fun, kwds=kwds: fun(event, **kwds)
 
     def __add_task(self, value):
@@ -306,6 +456,14 @@ class Tasks:
             self.task_tag_name,
             '<Double-Button-1>',
             func=self.__handler(self.__double_click, task_tag_name=self.task_tag_name))
+        self.canvas.tag_bind(
+            self.task_tag_name,
+            '<Button-3>',
+            func=self.__handler(self.__right_click, task_tag_name=self.task_tag_name))
+        # self.canvas.unbind('<Button-3>')
+
+    def __right_click(self, event, task_tag_name):
+        self.tile_queue.put(("set_tag_name", task_tag_name))
 
     def __double_click(self, event, task_tag_name):
         for value in self.mydb_dict.itervalues():
@@ -313,7 +471,7 @@ class Tasks:
                 NewTaskWindow(
                     title="修改日程",
                     height=180,
-                    pre_window=self.pre_window,
+                    tile_queue=self.tile_queue,
                     value=value)
                 return 1
         print("no!" + task_tag_name)
@@ -332,6 +490,7 @@ class Tasks:
     def del_all(self):
         """删除所有数据"""
         self.canvas.delete("all")
+        self.tile_queue.put("set_tag_name_")
         for key in self.mydb_dict.iterkeys():
             self.mydb_dict.__delitem__(key)
 
@@ -343,21 +502,38 @@ class Tasks:
         self.time_scale = self.mysetting_dict["time_scale"][0]
         self.title_scale = self.mysetting_dict["title_scale"][0]
         self.count_scale = self.mysetting_dict["count_scale"][0]
+        self.tasks_border = self.mysetting_dict['tasks_border'][0]
+        self.windows_border = self.mysetting_dict['windows_border'][0]
+
+        self.windows_border_color = "#" + str(hex(self.windows_border))[-1] * 6
+        self.canvas.config(highlightbackground=self.windows_border_color)
+
+        self.tasks_border_color = "#" + str(hex(self.tasks_border))[-1] * 6
 
         self.task_width = self.task_geometry[0]  # 高度，宽度，是否圆角
         self.task_height = self.task_geometry[1]
         self.task_margin_x = self.task_geometry[2]  # x左右边距，y上下边距
         self.task_margin_y = self.task_geometry[3]
 
+        self.canvas.config(highlightbackground=self.windows_border_color)
+        self.tasks_border_color = "#" + str(hex(self.tasks_border))[-1] * 6
+
         self.canvas.delete("all")
 
         self.task_y = self.task_margin_y
+
+        # print("数据库中的tile_geometry：", self.tile_geometry)
 
         # 没有任务项目时的大小
         self.pre_window_root.geometry("%dx%d+%d+%d" % (self.task_width + self.task_margin_x * 2,
                                                        self.task_y + self.task_height + self.task_margin_y,
                                                        self.tile_geometry[2],
                                                        self.tile_geometry[3]))
+
+        # print("没有任务项目时的tile_geometry：", (self.task_width + self.task_margin_x * 2,
+        #                                  self.task_y + self.task_height + self.task_margin_y,
+        #                                  self.tile_geometry[2],
+        #                                  self.tile_geometry[3]))
 
         for value in sorted(self.mydb_dict.itervalues(), key=self.__get_int_day):
             self.__add_task(value)
@@ -368,20 +544,21 @@ class Tasks:
                                                            self.task_y,
                                                            self.tile_geometry[2],
                                                            self.tile_geometry[3]))
+        self.mysetting_dict["tile_geometry"] = [(self.task_width + self.task_margin_x * 2,
+                                                self.task_y,
+                                                self.tile_geometry[2],
+                                                self.tile_geometry[3])]
 
 
 class NewTaskWindow(CustomWindow):
     """新建日程 or 修改日程"""
 
-    def __init__(self, pre_window, *args, **kwargs):
+    def __init__(self, tile_queue, *args, **kwargs):
         self.root = tk.Toplevel()
         super().__init__(*args, **kwargs)
 
         # 传递参数
-        self.pre_window = pre_window
-        self.tasks = pre_window.tasks
-        self.pre_window_root = pre_window.root
-        self.exe_dir_path = pre_window.exe_dir_path
+        self.tile_queue = tile_queue
 
         # 窗口布局
         self.main_frame = ttk.Frame(self.root, padding=20)
@@ -441,12 +618,13 @@ class NewTaskWindow(CustomWindow):
                     style='danger.Outline.TButton',
                     command=self.del_task,
                 ).pack(side=tk.LEFT, padx=3)
-        self.root.mainloop()
+
+        # self.root.mainloop()
 
     def del_task(self):
         """删除一项"""
-        self.tasks.del_one(self.value[0])
-        self.tasks.refresh_tasks()
+        self.tile_queue.put(("del_one", self.value[0]))
+        self.tile_queue.put("refresh_tasks")
         self.root.destroy()
 
     def clear(self):
@@ -458,7 +636,7 @@ class NewTaskWindow(CustomWindow):
         """点击确认"""
         if self.modify_flag == 1:
             # 先删除一项,然后再添加一项
-            self.tasks.del_one(self.value[0])
+            self.tile_queue.put(("del_one", self.value[0]))
 
         # 点击确认按钮,更新数据库
         startdate = datetime.today()
@@ -470,21 +648,19 @@ class NewTaskWindow(CustomWindow):
                  "#080808",
                  ''.join(random.sample('zyxwvutsrqponmlkjihgfedcba1234567890', 5)),
                  "white"]
-        self.tasks.add_one(value)
-        self.tasks.refresh_tasks()
+        self.tile_queue.put(("add_one", value))
+        self.tile_queue.put(("refresh_tasks"))
+
         self.root.destroy()
 
 
 class AskDelWindow(CustomWindow):
-    def __init__(self, pre_window=None, *args, **kwargs):
+    def __init__(self, tile_queue, *args, **kwargs):
         self.root = tk.Toplevel()
         super().__init__(*args, **kwargs)
+
         # 传递参数
-        self.pre_window = pre_window
-        self.pre_window_root = pre_window.root
-        self.width = pre_window.width
-        self.tasks = pre_window.tasks
-        self.exe_dir_path = pre_window.exe_dir_path
+        self.tile_queue = tile_queue
 
         # 布局
         self.frame_top = Frame(self.root)
@@ -509,24 +685,24 @@ class AskDelWindow(CustomWindow):
             command=self.ok, )
         self.ok_button.pack(side=tk.RIGHT, fill=tk.X, expand=tk.YES, padx=3)
 
-        self.root.mainloop()
+        # self.root.mainloop()
 
     def cancel(self):
         self.root.destroy()
 
     def ok(self):
-        self.tasks.del_all()
-        self.tasks.refresh_tasks()
+        self.tile_queue.put("del_all")
+        self.tile_queue.put("refresh_tasks")
         self.root.destroy()
 
 
 class AskResetWindow(CustomWindow):
-    def __init__(self, pre_window=None, *args, **kwargs):
+    def __init__(self, main_window_queue, *args, **kwargs):
         self.root = tk.Toplevel()
         super().__init__(*args, **kwargs)
 
         # 传递参数
-        self.pre_window = pre_window
+        self.main_window_queue = main_window_queue
 
         # 布局
         self.frame_top = Frame(self.root)
@@ -534,7 +710,7 @@ class AskResetWindow(CustomWindow):
         self.frame_bottom = Frame(self.root)
         self.frame_bottom.pack(side=BOTTOM, padx=20, expand=True, fill=X)
 
-        self.lable = ttk.Label(self.frame_top, text="是否要恢复默认（自动关闭软件）?")
+        self.lable = ttk.Label(self.frame_top, text="是否要恢复默认（将会自动关闭软件）?")
         self.lable.pack(side=tk.TOP, padx=5, pady=2, expand=True, fill=X)
 
         self.cancel_button = ttk.Button(
@@ -551,15 +727,15 @@ class AskResetWindow(CustomWindow):
             command=self.ok, )
         self.ok_button.pack(side=tk.RIGHT, fill=tk.X, expand=tk.YES, padx=3)
 
-        self.root.mainloop()
+        # self.root.mainloop()
 
     def cancel(self):
         self.root.destroy()
 
     def ok(self):
-        self.pre_window.reset()
+        self.main_window_queue.put("reset")
         self.root.destroy()
-        self.pre_window.exit()
+        self.main_window_queue.put("exit")
 
 
 class HelpWindow(CustomWindow):
@@ -610,9 +786,7 @@ class HelpWindow(CustomWindow):
 
 
 class ScaleFrame(Frame):
-    """
-    自定义滑动条
-    """
+    """自定义滑动条"""
 
     def __init__(self, widget_frame, name, init_value, from_, to, func, **kw):
         super().__init__(master=widget_frame, **kw)
@@ -634,7 +808,7 @@ class ScaleFrame(Frame):
 class WaitWindow(CustomWindow):
     """自定义等待窗体"""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, queue, *args, **kwargs):
         self.root = tk.Toplevel()
         super(WaitWindow, self).__init__(*args, **kwargs)
 
@@ -653,20 +827,42 @@ class WaitWindow(CustomWindow):
         self.content_lable = tk.Label(self.frame_top, text="正在初始化,请不要操作，请耐心等待......")
         self.content_lable.pack()
 
+        self.queue = queue  # 子线程与主线程的队列作为中继
+        self.root.after(1000, self.relay)
+
+        # root.mainloop()
         # 1.无法在threading中启动mainloop，main_loop方法必须在主线程当中进行。子线程直接操作UI会有很大的隐患。推荐使用队列与主线程交互。
-        # 2.另外mainloop()是一个阻塞函数，在外部调用其函数，会阻塞，除非那种一次性的回调（例如，按钮的点击事件）
-        # self.root.mainloop()
+        # 2.另外mainloop()是一个阻塞函数，在外部调用其函数，会阻塞，除非那种一次性的回调（例如按钮的点击事件）
+        self.root.mainloop()
+
+    def relay(self):
+        """更新UI队列"""
+        try:
+            # 队列不可阻塞
+            content = self.queue.get(False)
+            # self.logger.info(self.__class__.__name__ + " Queue接收到消息:" + str(content))
+            # 回调函数要在之前回调,因为如果在队列中打开窗体,窗体的 mailoop 会让函数卡死,死循环.
+            self.root.after(1, self.relay)
+            # 具体的更新Ui操作
+            self.UpdateUI(content)
+        except queue.Empty:
+            self.root.after(200, self.relay)
+
+    def UpdateUI(self, content):
+        if content == "exit":
+            self.exit()
 
 
 class UpdateWindow(CustomWindow):
     """检查更新页面"""
 
-    def __init__(self, version, *args, **kwargs):
+    def __init__(self, version, logger, *args, **kwargs):
         self.root = tk.Toplevel()
         super().__init__(*args, **kwargs)
 
-        self.exe_dir_path= self.pre_window.exe_dir_path
         self.version = version
+        self.logger = logger
+
         self.update_version = version
         self.update_url = ""
 
@@ -688,7 +884,7 @@ class UpdateWindow(CustomWindow):
         self.update_thread.setDaemon(True)
         self.update_thread.start()
 
-        self.root.mainloop()
+        # self.root.mainloop()
 
     '''-----------------------------------更新UI 线程-----------------------------------------------'''
 
@@ -762,7 +958,7 @@ class UpdateWindow(CustomWindow):
     '''-----------------------------------请求线程-----------------------------------------------'''
 
     def update(self):
-        update_path=str(Path(self.exe_dir_path).joinpath("update.txt"))
+        update_path = str(Path(self.exe_dir_path).joinpath("update.txt"))
         try:
             with open(update_path, "wb") as f:
                 f.write(requests.get("https://aidcs-1256440297.cos.ap-beijing.myqcloud.com/update.txt").content)
@@ -776,7 +972,7 @@ class UpdateWindow(CustomWindow):
             else:
                 self.queue.put("不需更新")
         except:
-            self.pre_window.logger.info(traceback.format_exc())
+            self.logger.info(traceback.format_exc())
             self.queue.put("网络错误")
 
 

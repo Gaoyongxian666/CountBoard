@@ -1,23 +1,137 @@
-from ctypes import POINTER, c_bool, c_int, pointer, sizeof, WinDLL, byref
-from ctypes.wintypes import DWORD, LONG, LPCVOID
+from ctypes import POINTER, c_bool, c_int, pointer, sizeof, WinDLL, byref,Structure
+from ctypes.wintypes import DWORD, HWND, ULONG, POINT, RECT, UINT, LONG, LPCVOID
 import win32api, win32gui
 from win32.lib import win32con
+from enum import Enum
 
-from c_structures import (
-    ACCENT_POLICY,
-    ACCENT_STATE,
-    MARGINS,
-    DWMNCRENDERINGPOLICY,
-    DWMWINDOWATTRIBUTE,
-    WINDOWCOMPOSITIONATTRIB,
-    WINDOWCOMPOSITIONATTRIBDATA,
-)
+
+class WINDOWCOMPOSITIONATTRIB(Enum):
+    WCA_UNDEFINED = 0,
+    WCA_NCRENDERING_ENABLED = 1,
+    WCA_NCRENDERING_POLICY = 2,
+    WCA_TRANSITIONS_FORCEDISABLED = 3,
+    WCA_ALLOW_NCPAINT = 4,
+    WCA_CAPTION_BUTTON_BOUNDS = 5,
+    WCA_NONCLIENT_RTL_LAYOUT = 6,
+    WCA_FORCE_ICONIC_REPRESENTATION = 7,
+    WCA_EXTENDED_FRAME_BOUNDS = 8,
+    WCA_HAS_ICONIC_BITMAP = 9,
+    WCA_THEME_ATTRIBUTES = 10,
+    WCA_NCRENDERING_EXILED = 11,
+    WCA_NCADORNMENTINFO = 12,
+    WCA_EXCLUDED_FROM_LIVEPREVIEW = 13,
+    WCA_VIDEO_OVERLAY_ACTIVE = 14,
+    WCA_FORCE_ACTIVEWINDOW_APPEARANCE = 15,
+    WCA_DISALLOW_PEEK = 16,
+    WCA_CLOAK = 17,
+    WCA_CLOAKED = 18,
+    WCA_ACCENT_POLICY = 19,
+    WCA_FREEZE_REPRESENTATION = 20,
+    WCA_EVER_UNCLOAKED = 21,
+    WCA_VISUAL_OWNER = 22,
+    WCA_LAST = 23
+
+
+class ACCENT_STATE(Enum):
+    """ Client area status enumeration class """
+    ACCENT_DISABLED = 0,
+    ACCENT_ENABLE_GRADIENT = 1,
+    ACCENT_ENABLE_TRANSPARENTGRADIENT = 2,
+    ACCENT_ENABLE_BLURBEHIND = 3,          # Aero effect
+    ACCENT_ENABLE_ACRYLICBLURBEHIND = 4,   # Acrylic effect
+    ACCENT_INVALID_STATE = 5,
+
+
+class ACCENT_POLICY(Structure):
+    """ Specific attributes of client area """
+
+    _fields_ = [
+        ("AccentState",     DWORD),
+        ("AccentFlags",     DWORD),
+        ("GradientColor",   DWORD),
+        ("AnimationId",     DWORD),
+    ]
+
+
+class WINDOWCOMPOSITIONATTRIBDATA(Structure):
+    _fields_ = [
+        ("Attribute",   DWORD),
+        # Pointer() receives any ctypes type and returns a pointer type
+        ("Data",        POINTER(ACCENT_POLICY)),
+        ("SizeOfData",  ULONG),
+    ]
+
+
+class DWMNCRENDERINGPOLICY(Enum):
+    DWMNCRP_USEWINDOWSTYLE = 0
+    DWMNCRP_DISABLED = 1
+    DWMNCRP_ENABLED = 2
+    DWMNCRP_LAS = 3
+
+
+class DWMWINDOWATTRIBUTE(Enum):
+    DWMWA_NCRENDERING_ENABLED = 1
+    DWMWA_NCRENDERING_POLICY = 2
+    DWMWA_TRANSITIONS_FORCEDISABLED = 3
+    DWMWA_ALLOW_NCPAINT = 4
+    DWMWA_CAPTION_BUTTON_BOUNDS = 5
+    DWMWA_NONCLIENT_RTL_LAYOUT = 6
+    DWMWA_FORCE_ICONIC_REPRESENTATION = 7
+    DWMWA_FLIP3D_POLICY = 8
+    DWMWA_EXTENDED_FRAME_BOUNDS = 9
+    DWMWA_HAS_ICONIC_BITMAP = 10
+    DWMWA_DISALLOW_PEEK = 11
+    DWMWA_EXCLUDED_FROM_PEEK = 12
+    DWMWA_CLOAK = 13
+    DWMWA_CLOAKED = 14
+    DWMWA_FREEZE_REPRESENTATION = 25
+    DWMWA_LAST = 16
+
+
+class MARGINS(Structure):
+    _fields_ = [
+        ("cxLeftWidth",     c_int),
+        ("cxRightWidth",    c_int),
+        ("cyTopHeight",     c_int),
+        ("cyBottomHeight",  c_int),
+    ]
+
+
+class MINMAXINFO(Structure):
+    _fields_ = [
+        ("ptReserved",      POINT),
+        ("ptMaxSize",       POINT),
+        ("ptMaxPosition",   POINT),
+        ("ptMinTrackSize",  POINT),
+        ("ptMaxTrackSize",  POINT),
+    ]
+
+
+class PWINDOWPOS(Structure):
+    _fields_ = [
+        ('hWnd',            HWND),
+        ('hwndInsertAfter', HWND),
+        ('x',               c_int),
+        ('y',               c_int),
+        ('cx',              c_int),
+        ('cy',              c_int),
+        ('flags',           UINT)
+    ]
+
+
+class NCCALCSIZE_PARAMS(Structure):
+    _fields_ = [
+        ('rgrc', RECT*3),
+        ('lppos', POINTER(PWINDOWPOS))
+    ]
+
 
 
 class WindowEffect:
     """ A class that calls Windows API to realize window effect """
 
     def __init__(self):
+        # 获取句柄的两种方式(另一种是通过win32获取)
         # Declare the function signature of the API
         self.user32 = WinDLL("user32")
         self.dwmapi = WinDLL("dwmapi")

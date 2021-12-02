@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "CountBoard"
-#define MyAppVersion "1.2.0.4"
+#define MyAppVersion "1.3.0.1"
 #define MyAppPublisher "Gaoyongxian"
 #define MyAppURL "https://github.com/Gaoyongxian666/CountBoard"
 #define MyAppExeName "CountBoard.exe"
@@ -30,6 +30,20 @@ SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayIcon={app}\{#MyAppExeName} 
 
+[Code]  
+function InitializeSetup(): boolean;  
+var  
+  ResultStr: String;  
+  ResultCode: Integer;  
+begin  
+  if RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{6DA65E00-FAAE-4286-B277-6D6F99519AD0}_is1', 'UninstallString', ResultStr) then  
+    begin  
+      ResultStr := RemoveQuotes(ResultStr);  
+      Exec(ResultStr, '/silent', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);  
+    end;  
+    result := true;  
+end;
+
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "cn"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
@@ -42,6 +56,14 @@ Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\{#MyAp
 Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\cacert.pem"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\favicon.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\introduction.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\del.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\home.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\edit.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\exit.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\github.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\help.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\recovery.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\Gao yongxian\PycharmProjects\CountBoard\pack\CountBoard\update.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
