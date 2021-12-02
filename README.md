@@ -60,3 +60,11 @@ CountBoard 是一个基于Tkinter开源的桌面日程倒计时应用。
    * 2021-11-04：修改外观，实现了亚克力效果和磨玻璃效果
 * V1.0
    * 2021-10-16：完成基本功能
+
+## 如何打包
+1. 使用`pyinstaller`进行打包`pip install pyinstaller`
+2. 下载项目到本地,在项目目录下新建一个`pack`文件夹(用来存放由`pyinstaller`生成文件)
+3. 在`pack`文件夹下新建一个`hooks`文件夹,将`hook-apscheduler.py`复制过去.
+4. 打开`cmd`,`cd`到`pack`文件夹下,使用命令 `pyinstaller -F -i "C:\Users\Gao yongxian\PycharmProjects\CountBoard\favicon.ico" "C:\Users\Gao yongxian\PycharmProjects\CountBoard\CountBoard.py" -w --additional-hooks-dir=./hooks` (注意修改你自己的路径)
+5. 命令说明:`-F`是生成单`exe`文件,你会在`dist`文件夹下看到你的`exe`文件.`-i`是指定窗口的图标.`-w`是指不带命令行.`--additional-hooks-dir`是指定你自己的hooks文件
+6. 因为项目中使用了`apscheduler`,而`pyinstaller`在打包`apscheduler`时不能自动生成元数据,所以只能自己指定了.
