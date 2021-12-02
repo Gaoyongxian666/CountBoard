@@ -1,13 +1,13 @@
 # -*- coding: UTF-8 -*-
 """
 @Project ：CountBoard
-@File ：hook-apscheduler.py
+@File ：hooks-apscheduler.py
 @Author ：Gao yongxian
 @Date ：2021/12/2 13:02
 @contact: g1695698547@163.com
 """
 """apscheduler 3.6.3"""
-# hook-a.py 不能被检索到是？
+# hooks-a.py 不能被检索到是？
 
 from PyInstaller.utils.hooks import collect_submodules, copy_metadata, collect_all
 

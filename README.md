@@ -42,10 +42,10 @@ CountBoard 是一个基于Tkinter开源的桌面日程倒计时应用。
 * 数据存储: [sqlitedict](https://github.com/Gaoyongxian666/pywin10)
 
 ## 下载地址
-### 2021-12-02更新
-* [安装包](https://gaoyongxian.lanzouo.com/iyhcZx55wza)
-* [便携版](https://gaoyongxian.lanzouo.com/iUxdwx55xef)
-* [32位版](https://gaoyongxian.lanzouo.com/itle1x57cob)
+### 2021-12-02更新 1.3.0.2
+* [安装包](https://gaoyongxian.lanzouo.com/i3yn3x5xdkj)
+* [便携版](https://gaoyongxian.lanzouo.com/i8ixhx5xfne)
+* [32位版]()
 
 ## 贡献者(欢迎PR)
 * [rtrobin](https://github.com/rtrobin)
