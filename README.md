@@ -43,9 +43,9 @@ CountBoard 是一个基于Tkinter开源的桌面日程倒计时应用。
 
 ## 下载地址
 ### 2021-12-02更新 1.3.0.2
-* [安装包](https://gaoyongxian.lanzouo.com/i3yn3x5xdkj)
-* [便携版](https://gaoyongxian.lanzouo.com/i8ixhx5xfne)
-* [32位版](https://gaoyongxian.lanzouo.com/iGJhVx5xjuf)
+* [安装包](https://gaoyongxian.lanzouo.com/iBR5lx63n2h)
+* [便携版](https://gaoyongxian.lanzouo.com/ixsSax63kgd)
+* [32位版](https://gaoyongxian.lanzouo.com/iTwuNx63l7a)
 
 ## 贡献者(欢迎PR)
 * [rtrobin](https://github.com/rtrobin)
